@@ -12,6 +12,7 @@ import type Polygon from "ol/geom/Polygon";
 import MultiPolygon from "ol/geom/MultiPolygon";
 import * as turf from "@turf/turf";
 import useAppStore from "../state/store";
+import { useVisibilityStore } from "../state/visibility";
 
 const boundaryStyle = new Style({
 	stroke: new Stroke({ color: "rgba(200, 120, 0, 1)", width: 2 }),
@@ -60,6 +61,24 @@ export default function BoundaryTools({ useExternalToggle = false }: { useExtern
 			map.addLayer(layerRef.current);
 		}
 	}, [map]);
+
+	// Visibility binding for property boundary layer
+	useEffect(() => {
+		const layer = layerRef.current;
+		if (!layer) return;
+		const updateVisibility = () => {
+			if (!layerRef.current) return;
+			const visible = useVisibilityStore.getState().isLayerVisible("property_boundary");
+			layerRef.current.setVisible(visible);
+		};
+		// Initial visibility
+		updateVisibility();
+		// Subscribe to store changes
+		const unsub = useVisibilityStore.subscribe(updateVisibility);
+		return () => {
+			unsub();
+		};
+	}, []);
 
 	const importFormats = useMemo(
 		() => ({

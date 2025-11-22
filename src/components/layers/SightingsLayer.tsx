@@ -14,6 +14,7 @@ import { useHuntSelection } from "../../state/hunts";
 import { useUserStore } from "../../state/user";
 import { shouldShowFeature, getAgeOpacity } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
+import { useVisibilityStore } from "../../state/visibility";
 
 const makeSightingStyle = (opacity: number) =>
 	new Style({
@@ -165,6 +166,15 @@ export default function SightingsLayer() {
 		window.addEventListener("start-new-sighting", onStartNew);
 		window.addEventListener("layers:reload", onReloadAll);
 
+		// Visibility binding
+		const updateVisibility = () => {
+			if (!layerRef.current) return;
+			const visible = useVisibilityStore.getState().isLayerVisible("animal_sightings");
+			layerRef.current.setVisible(visible);
+		};
+		updateVisibility();
+		const unsubVisibility = useVisibilityStore.subscribe(updateVisibility);
+
 		return () => {
 			window.removeEventListener("start-new-sighting", onStartNew);
 			window.removeEventListener("layer:enable-modify:animal_sightings", onEnable);
@@ -174,6 +184,7 @@ export default function SightingsLayer() {
 			window.removeEventListener("layer:persist:animal_sightings", onPersistEvt);
 			window.removeEventListener("delete-feature-animal_sightings", onDelete);
 			window.removeEventListener("layers:reload", onReloadAll);
+			unsubVisibility();
 			if (drawRef.current) map.removeInteraction(drawRef.current);
 			if (selectRef.current) map.removeInteraction(selectRef.current);
 			if (modifyRef.current) map.removeInteraction(modifyRef.current);

@@ -46,9 +46,18 @@ export const useVisibilityStore = create<VisibilityState>((set, get) => ({
 	setTimeWindow: (w) => set({ timeWindow: w }),
 	overrides: {},
 	setLayerOverride: (layerId, visible) =>
-		set((s) => ({
-			overrides: { ...s.overrides, [layerId]: visible }
-		})),
+		set((s) => {
+			// If visible is undefined, remove the override to allow preset to take over
+			if (visible === undefined) {
+				const newOverrides = { ...s.overrides };
+				delete newOverrides[layerId];
+				return { overrides: newOverrides };
+			}
+			// Otherwise, set the override value
+			return {
+				overrides: { ...s.overrides, [layerId]: visible }
+			};
+		}),
 	isLayerVisible: (layerId: LayerId) => {
 		const preset = get().preset;
 		const override = get().overrides[layerId];

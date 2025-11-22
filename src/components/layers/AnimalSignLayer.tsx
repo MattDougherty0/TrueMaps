@@ -176,12 +176,13 @@ export default function AnimalSignLayer() {
 	useEffect(() => {
 		const layer = layerRef.current;
 		if (!layer) return;
-		const apply = () => {
+		const updateVisibility = () => {
+			if (!layerRef.current) return;
 			const visible = useVisibilityStore.getState().isLayerVisible("animal_sign");
-			layer.setVisible(visible);
+			layerRef.current.setVisible(visible);
 		};
-		apply();
-		const unsub = useVisibilityStore.subscribe(apply);
+		updateVisibility();
+		const unsub = useVisibilityStore.subscribe(updateVisibility);
 		return () => {
 			unsub();
 		};

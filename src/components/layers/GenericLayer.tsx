@@ -243,12 +243,28 @@ export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 		window.addEventListener(persistEvt, onPersist);
 		window.addEventListener("layers:reload", onReloadAll);
 
+		// Visibility binding - set up subscription after layer is created
+		const updateVisibility = () => {
+			if (!layerRef.current) return;
+			const visible = useVisibilityStore.getState().isLayerVisible(layerId);
+			layerRef.current.setVisible(visible);
+		};
+		
+		// Set initial visibility
+		updateVisibility();
+		
+		// Subscribe to store changes
+		const unsubVisibility = useVisibilityStore.subscribe(() => {
+			updateVisibility();
+		});
+
 		return () => {
 			window.removeEventListener(addEvt, onAdd);
 			window.removeEventListener(delEvt, onDel);
 			window.removeEventListener(reloadEvt, onReload);
 			window.removeEventListener(persistEvt, onPersist);
 			window.removeEventListener("layers:reload", onReloadAll);
+			unsubVisibility();
 			if (drawRef.current) map.removeInteraction(drawRef.current);
 			if (modifyRef.current) map.removeInteraction(modifyRef.current);
 			if (selectRef.current) map.removeInteraction(selectRef.current);
@@ -259,21 +275,6 @@ export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 			layerRef.current = null;
 		};
 	}, [map, projectPath, layerId, cfg]);
-
-	// visibility binding
-	useEffect(() => {
-		const layer = layerRef.current;
-		if (!layer) return;
-		const apply = () => {
-			const visible = useVisibilityStore.getState().isLayerVisible(layerId);
-			layer.setVisible(visible);
-		};
-		apply();
-		const unsub = useVisibilityStore.subscribe(apply);
-		return () => {
-			unsub();
-		};
-	}, [layerId]);
 
 	const onSubmit = async (values: Record<string, unknown>) => {
 		if (!editing) return;

@@ -14,6 +14,7 @@ import { useHuntSelection } from "../../state/hunts";
 import { shouldShowFeature } from "../../lib/geo/filters";
 import { useUserStore } from "../../state/user";
 import { useSelectionStore } from "../../state/selection";
+import { useVisibilityStore } from "../../state/visibility";
 
 const pathStyle = (feature?: Feature<LineString>) =>
 	new Style({
@@ -169,11 +170,21 @@ export default function AnimalPathsLayer() {
 		window.addEventListener("start-new-animal-path", onStartNew);
 		window.addEventListener("layers:reload", onReloadAll);
 
+		// Visibility binding
+		const updateVisibility = () => {
+			if (!layerRef.current) return;
+			const visible = useVisibilityStore.getState().isLayerVisible("animal_paths");
+			layerRef.current.setVisible(visible);
+		};
+		updateVisibility();
+		const unsubVisibility = useVisibilityStore.subscribe(updateVisibility);
+
 		return () => {
 			window.removeEventListener("start-new-animal-path", onStartNew);
 			window.removeEventListener("layer:enable-modify:animal_paths", onEnable);
 			window.removeEventListener("layer:disable-modify:animal_paths", onDisable);
 			window.removeEventListener("layers:reload", onReloadAll);
+			unsubVisibility();
 			if (drawRef.current) map.removeInteraction(drawRef.current);
 			if (selectRef.current) map.removeInteraction(selectRef.current);
 			if (modifyRef.current) map.removeInteraction(modifyRef.current);

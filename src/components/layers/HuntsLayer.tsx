@@ -16,6 +16,7 @@ import { toLonLat } from "ol/proj";
 import { useUserStore } from "../../state/user";
 import { shouldShowFeature, getAgeOpacity } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
+import { useVisibilityStore } from "../../state/visibility";
 
 const makeHuntStyle = (opacity: number) =>
 	new Style({
@@ -195,7 +196,17 @@ export default function HuntsLayer() {
 		window.addEventListener("delete-feature-hunts", onDelete);
 		window.addEventListener("layers:reload", onReloadAll);
 
+		// Visibility binding
+		const updateVisibility = () => {
+			if (!layerRef.current) return;
+			const visible = useVisibilityStore.getState().isLayerVisible("hunts");
+			layerRef.current.setVisible(visible);
+		};
+		updateVisibility();
+		const unsubVisibility = useVisibilityStore.subscribe(updateVisibility);
+
 		return () => {
+			unsubVisibility();
 			window.removeEventListener("start-new-hunt", onStartNew);
 			window.removeEventListener("layer:enable-modify:hunts", onEnable);
 			window.removeEventListener("layer:disable-modify:hunts", onDisable);
