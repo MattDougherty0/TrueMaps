@@ -148,17 +148,23 @@ export default function BasemapLayers() {
 				return;
 			}
 			// ArcGIS ImageServer (exportImage)
+			// Use TileArcGISRest for full map coverage (tiles entire service extent)
+			// instead of ImageArcGISRest which only covers current view extent
 			if ((entry.type === "arcgis-image" || entry.arcgisImageUrl) && entry.arcgisImageUrl) {
-				const params = entry.timeParam ? { TIME: entry.timeParam } : undefined;
-				const src = new ImageArcGISRest({
+				const params: any = {};
+				if (entry.timeParam) {
+					params.TIME = entry.timeParam;
+				}
+				// TileArcGISRest works with ImageServer exportImage and provides full coverage
+				const src = new TileArcGISRest({
 					url: entry.arcgisImageUrl,
 					params,
 					attributions: entry.attribution || "Historical Imagery",
 					crossOrigin: "anonymous"
 				});
 				src.set("olcs_skip", true);
-				imageLayer.setSource(src as any);
-				imageLayer.setVisible(true);
+				tileLayer.setSource(src as any);
+				tileLayer.setVisible(true);
 				return;
 			}
 		});

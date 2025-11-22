@@ -63,8 +63,9 @@ export default function HistoricalAutoPopulate() {
 					});
 				}
 
-				// Add NAIP year templates (common vintages; service is national)
-				const naipYears = [2013, 2015, 2017, 2019, 2021, 2023];
+				// Add NAIP year templates - only years actually available in USGS service
+				// Available years: 2017, 2019, 2021, 2023 (per service query)
+				const naipYears = [2017, 2019, 2021, 2023];
 				for (const n of generateNaipYearTemplates(naipYears)) {
 					addEntry({
 						id: `naip_${n.year}`,
@@ -73,11 +74,11 @@ export default function HistoricalAutoPopulate() {
 						arcgisImageUrl: n.arcgisImageUrl,
 						timeParam: n.timeParam,
 						type: n.type,
-						attribution: "USDA NAIP"
+						attribution: "USGS NAIP"
 					});
 				}
 
-				// If PA project, add older NAIP years via USGS NAIP ImageServer
+				// If PA project, try to discover older NAIP years from PASDA/other sources
 				const inPA =
 					typeof lon === "number" &&
 					typeof lat === "number" &&
@@ -86,18 +87,8 @@ export default function HistoricalAutoPopulate() {
 					lat >= 39.6 &&
 					lat <= 42.3;
 				if (inPA) {
-					const olderNaipYears = [2003, 2004, 2005, 2006, 2008, 2010, 2011, 2012];
-					for (const y of olderNaipYears) {
-						addEntry({
-							id: `naip_usgs_${y}`,
-							label: `NAIP ${y} (USGS)`,
-							year: y,
-							arcgisImageUrl: "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer",
-							timeParam: `${y}-01-01,${y}-12-31`,
-							type: "arcgis-image",
-							attribution: "USGS NAIP"
-						});
-					}
+					// Note: USGS NAIP service doesn't have older years (2003-2012, 2013, 2015)
+					// These will be discovered via discoverPaArcgisImageryCandidates if available
 					// NHAP 1980s (USDA NRCS)
 					const nhapYears = [1980, 1981, 1982, 1983, 1984, 1985, 1986, 1987, 1988, 1989];
 					for (const y of nhapYears) {

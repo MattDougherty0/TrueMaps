@@ -64,7 +64,8 @@ export function generateNaipYearTemplates(
 	return years.map((y) => ({
 		label: `NAIP ${y}`,
 		year: y,
-		arcgisImageUrl: "https://naip-usda.arcgis.com/arcgis/rest/services/NAIP/ImageServer",
+		// Use USGS NAIP service (USDA service at naip-usda.arcgis.com is not resolving)
+		arcgisImageUrl: "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer",
 		// Time extent for NAIP year; many deployments accept ISO date range.
 		timeParam: `${y}-01-01,${y}-12-31`,
 		type: "arcgis-image"
