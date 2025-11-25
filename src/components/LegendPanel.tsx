@@ -173,9 +173,12 @@ export default function LegendPanel() {
 										return (
 											<div key={id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
 												<input type="checkbox" checked={isVisible(id)} onChange={(e) => setOverride(id, e.target.checked)} style={{ accentColor: "#3b82f6" }} />
-												<span>{cfg.icon} {cfg.label}</span>
-												{isDynamic && <div style={{ fontSize: 10 }}> (Small | Large)</div>}
-												{cfg.addable && <button onClick={() => window.dispatchEvent(new Event(`add-feature-${id}`))}>Add</button>}
+												<span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+													{cfg.icon && <span style={{ fontSize: 16 }}>{cfg.icon}</span>}
+													<span>{cfg.label}</span>
+												</span>
+												{isDynamic && <div style={{ fontSize: 10, color: "rgba(15,23,42,0.55)" }}> (Small | Large)</div>}
+												{cfg.addable && <button onClick={() => window.dispatchEvent(new Event(`add-feature-${id}`))} style={{ marginLeft: "auto", fontSize: 11, padding: "2px 8px" }}>Add</button>}
 											</div>
 										);
 									})}

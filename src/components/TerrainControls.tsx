@@ -1,4 +1,4 @@
-import { type ChangeEvent, useEffect, useMemo, useRef } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTerrainPreferences } from "../state/terrain";
 import { useCameraPreferences } from "../state/camera";
 
@@ -63,23 +63,24 @@ const sliderLabelStyle: React.CSSProperties = {
 };
 
 export default function TerrainControls() {
-           const {
-               enabled,
-               verticalExaggeration,
-               setEnabled,
-               setVerticalExaggeration,
-               ionToken,
-               terrainUrl,
-               terrariumUrl
-           } = useTerrainPreferences((state) => ({
-               enabled: state.enabled,
-               verticalExaggeration: state.verticalExaggeration,
-               setEnabled: state.setEnabled,
-               setVerticalExaggeration: state.setVerticalExaggeration,
-               ionToken: state.ionToken,
-               terrainUrl: state.terrainUrl,
-               terrariumUrl: state.terrariumUrl
-           }));
+	const [open, setOpen] = useState(false);
+	const {
+		enabled,
+		verticalExaggeration,
+		setEnabled,
+		setVerticalExaggeration,
+		ionToken,
+		terrainUrl,
+		terrariumUrl
+	} = useTerrainPreferences((state) => ({
+		enabled: state.enabled,
+		verticalExaggeration: state.verticalExaggeration,
+		setEnabled: state.setEnabled,
+		setVerticalExaggeration: state.setVerticalExaggeration,
+		ionToken: state.ionToken,
+		terrainUrl: state.terrainUrl,
+		terrariumUrl: state.terrariumUrl
+	}));
 
            useEffect(() => {
                // Ensure projects always open in 2D unless the user explicitly enables 3D.
@@ -137,9 +138,80 @@ export default function TerrainControls() {
 		}, animate ? 0 : 16); // ~60fps for non-animated, immediate for animated
 	};
 
+	const toggleButtonStyle: React.CSSProperties = {
+		padding: "6px 12px",
+		borderRadius: 6,
+		border: "1px solid rgba(15,23,42,0.12)",
+		background: "rgba(255,255,255,0.92)",
+		fontSize: 12,
+		cursor: "pointer",
+		color: "rgba(15,23,42,0.75)",
+		boxShadow: "0 4px 12px rgba(15,23,42,0.08)",
+		width: "100%",
+		textAlign: "left"
+	};
+
+	if (!open) {
+		return (
+			<div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+				<button onClick={() => setOpen(true)} style={toggleButtonStyle}>
+					Elevation Mode
+				</button>
+				<div style={buttonRowStyle}>
+					<button
+						type="button"
+						style={enabled ? modeButtonBase : modeButtonActive}
+						onClick={() => setEnabled(false)}
+						aria-pressed={!enabled}
+					>
+						2D
+					</button>
+					<button
+						type="button"
+						style={enabled ? modeButtonActive : modeButtonBase}
+						onClick={() => setEnabled(true)}
+						aria-pressed={enabled}
+					>
+						3D
+					</button>
+				</div>
+			</div>
+		);
+	}
+
 	return (
-		<div style={containerStyle}>
-			<div style={badgeStyle}>Elevation Mode</div>
+		<div
+			style={{
+				padding: "12px 14px",
+				background: "rgba(255,255,255,0.94)",
+				border: "1px solid rgba(15, 23, 42, 0.12)",
+				borderRadius: 6,
+				boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
+				display: "flex",
+				flexDirection: "column",
+				gap: 8,
+				width: "100%"
+			}}
+		>
+			<div
+				onClick={() => setOpen(false)}
+				style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+				title="Click to collapse"
+			>
+				<strong style={{ fontSize: 13, color: "rgba(15,23,42,0.75)" }}>Elevation Mode</strong>
+				<button
+					onClick={() => setOpen(false)}
+					style={{
+						border: "none",
+						background: "transparent",
+						fontSize: 12,
+						color: "rgba(15,23,42,0.55)",
+						cursor: "pointer"
+					}}
+				>
+					Hide
+				</button>
+			</div>
 			<div style={buttonRowStyle}>
 				<button
 					type="button"

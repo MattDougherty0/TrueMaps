@@ -66,7 +66,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		addable: false,
 		selectable: false,
 		label: "Property Boundary",
-		icon: "▱",
+		icon: "📐",
 		legendFill: "rgba(56, 189, 248, 0.22)",
 		legendStroke: "rgba(14, 165, 233, 0.9)",
 		areaField: "acres"
@@ -81,7 +81,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		},
 		addable: true,
 		label: "Trees",
-		icon: "T",
+		icon: "🌲",
 		legendFill: "#047857"
 	},
 	tree_stands: {
@@ -89,8 +89,8 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		geometry: "Polygon",
 		style: poly("rgba(59, 130, 246, 0.20)", "rgba(37, 99, 235, 0.75)", 2),
 		addable: true,
-		label: "Tree Stands (Area)",
-		icon: "▣",
+		label: "Tree Stand Areas",
+		icon: "🏞️",
 		legendFill: "rgba(59, 130, 246, 0.30)",
 		legendStroke: "rgba(37, 99, 235, 0.75)",
 		areaField: "area_acres"
@@ -101,7 +101,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: poly("rgba(217, 180, 255, 0.26)", "rgba(168, 85, 247, 0.6)", 1.8),
 		addable: true,
 		label: "Bedding Areas",
-		icon: "▤",
+		icon: "🛏️",
 		legendFill: "rgba(217, 180, 255, 0.38)",
 		legendStroke: "rgba(168, 85, 247, 0.6)",
 		areaField: "size_acres"
@@ -112,7 +112,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: pointVector("#7c3aed", "#fff", 7, 4), // Square for "dirt pile"
 		addable: true,
 		label: "Beds",
-		icon: "B",
+		icon: "🛌",
 		legendFill: "#7c3aed"
 	},
 	open_woods: {
@@ -127,7 +127,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		},
 		addable: true,
 		label: "Open Woods",
-		icon: "▧",
+		icon: "🌳",
 		legendFill: "rgba(34, 197, 94, 0.26)",
 		legendStroke: "rgba(22, 163, 74, 0.6)",
 		areaField: "area_acres"
@@ -138,7 +138,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: pointVector("#0f766e", "#fff", 7, 4), // Square for "dirt pile"
 		addable: true,
 		label: "Cover Points",
-		icon: "C",
+		icon: "🌿",
 		legendFill: "#0f766e"
 	},
 	acorn_flats: {
@@ -147,7 +147,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: poly("rgba(250, 204, 21, 0.24)", "rgba(217, 119, 6, 0.6)", 1.6),
 		addable: true,
 		label: "Acorn Flats",
-		icon: "⬡",
+		icon: "🌰",
 		legendFill: "rgba(250, 204, 21, 0.36)",
 		legendStroke: "rgba(217, 119, 6, 0.6)",
 		areaField: "area_acres"
@@ -158,7 +158,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: pointVector("#ca8a04", "#fff", 7, 4), // Square for "dirt pile"
 		addable: true,
 		label: "Mast Checkpoints",
-		icon: "MC",
+		icon: "🔍",
 		legendFill: "#ca8a04"
 	},
 	big_rocks: {
@@ -173,7 +173,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		},
 		addable: true,
 		label: "Big Rocks",
-		icon: "RK",
+		icon: "🪨",
 		legendFill: "#4b5563"
 	},
 	cliffs: {
@@ -182,7 +182,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: line("#a16207", 3.2, [6, 4]),
 		addable: true,
 		label: "Cliffs",
-		icon: "Cliff",
+		icon: "📉",
 		legendLine: "#a16207"
 	},
 	ravines: {
@@ -191,7 +191,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: line("#7c3aed", 3, [4, 4]),
 		addable: true,
 		label: "Ravines",
-		icon: "Ravine",
+		icon: "🏔️",
 		legendLine: "#7c3aed"
 	},
 	streams: {
@@ -200,7 +200,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: line("#0ea5e9", 3.2),
 		addable: true,
 		label: "Streams",
-		icon: "Stream",
+		icon: "💧",
 		legendLine: "#0ea5e9"
 	},
 	trails: {
@@ -209,7 +209,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: lineWithLabel("#f97316", 3.2, "name"),
 		addable: true,
 		label: "Trails",
-		icon: "Trail",
+		icon: "🛤️",
 		legendLine: "#f97316"
 	},
 	scrapes: {
@@ -218,7 +218,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: pointVector("#ff7043", "#fff", 7, 4), // Square for "dirt pile"
 		addable: true,
 		label: "Scrapes",
-		icon: "Sc",
+		icon: "👣",
 		legendFill: "#f97316"
 	},
 	rubs: {
@@ -227,7 +227,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: pointVector("#a0522d", "#fff", 7, 5), // Pentagon for "rub mark"
 		addable: true,
 		label: "Rubs",
-		icon: "R",
+		icon: "🪵",
 		legendFill: "#dc2626"
 	},
 	stands: {
@@ -235,8 +235,8 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		geometry: "Point",
 		style: pointVector("#1d4ed8", "#fff", 9, 5), // Pentagon for "tree stand"
 		addable: true,
-		label: "Tree Stands (Point)",
-		icon: "S",
+		label: "Tree Stand Points",
+		icon: "🪜",
 		legendFill: "#1d4ed8"
 	},
 	hunts: {
@@ -245,7 +245,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: pointVector("#0ea5e9", "#fff", 8, 4), // Square for "hunt"
 		addable: true,
 		label: "Hunts",
-		icon: "H",
+		icon: "🎯",
 		legendFill: "#0ea5e9"
 	},
 	animal_sightings: {
@@ -254,7 +254,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: pointVector("#ec4899", "#fff", 8, 4), // Square for "sighting"
 		addable: true,
 		label: "Animal Sightings",
-		icon: "Si",
+		icon: "👁️",
 		legendFill: "#ec4899"
 	},
 	animal_paths: {
@@ -263,7 +263,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: lineWithLabel("#14b8a6", 3.2, "name"),
 		addable: true,
 		label: "Animal Paths",
-		icon: "Path",
+		icon: "🦶",
 		legendLine: "#14b8a6"
 	},
 	animal_sign: {
@@ -272,7 +272,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: pointVector("#9333ea", "#fff", 7, 4), // Square for "sign"
 		addable: true,
 		label: "Animal Sign",
-		icon: "SG",
+		icon: "🐾",
 		legendFill: "#9333ea"
 	},
 	harvests: {
@@ -281,7 +281,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		style: pointVector("#f43f5e", "#fff", 8, 4), // Square for "harvest"
 		addable: true,
 		label: "Harvests",
-		icon: "Hv",
+		icon: "🏆",
 		legendFill: "#f43f5e"
 	}
 };
