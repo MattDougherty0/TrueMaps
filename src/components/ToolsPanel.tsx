@@ -5,14 +5,10 @@ import { printCurrentMap } from "../lib/io/print";
 import { colors, borderRadius, spacing, typography } from "../lib/theme";
 
 export default function ToolsPanel() {
-	const { projectPath, properties, activePropertyId, setActivePropertyId } = useAppStore();
+	const { projectPath } = useAppStore();
 	const [open, setOpen] = useState(false);
 	const [status, setStatus] = useState<string>("");
 	if (!projectPath) return null;
-
-	const showPropertySwitch = Array.isArray(properties) && properties.length > 1;
-	const activePropertyName =
-		(properties || []).find((p) => p.id === activePropertyId)?.name || null;
 
 	const runExport = async () => {
 		setStatus("Exporting…");
@@ -102,49 +98,6 @@ export default function ToolsPanel() {
 					Hide
 				</button>
 			</div>
-			{showPropertySwitch ? (
-				<div
-					style={{
-						border: `1px solid ${colors.borderMedium}`,
-						borderRadius: borderRadius.md,
-						background: colors.bgSecondary,
-						padding: spacing.md,
-						display: "flex",
-						flexDirection: "column",
-						gap: spacing.sm
-					}}
-				>
-					<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>
-						Active property:{" "}
-						<span style={{ color: colors.textPrimary, fontWeight: typography.fontWeight.semibold }}>
-							{activePropertyName || "—"}
-						</span>
-					</div>
-					<button
-						type="button"
-						onClick={() => {
-							// Clear selection so the PropertyPicker overlay appears again
-							void setActivePropertyId(null);
-							setOpen(false);
-						}}
-						style={{
-							...commonButton,
-							background: colors.primary,
-							borderColor: colors.primary,
-							color: colors.textOnPrimary,
-							boxShadow: colors.shadowGlow
-						}}
-						onMouseEnter={(e) => {
-							e.currentTarget.style.background = colors.primaryHover;
-						}}
-						onMouseLeave={(e) => {
-							e.currentTarget.style.background = colors.primary;
-						}}
-					>
-						Switch Property
-					</button>
-				</div>
-			) : null}
 			<button
 				onClick={() => {
 					window.dispatchEvent(new Event("boundarytools:open"));
