@@ -4,7 +4,7 @@ import "cesium/Build/Cesium/Widgets/widgets.css";
 import OLMap from "ol/Map";
 import View from "ol/View";
 import { defaults as defaultControls, ScaleLine, FullScreen } from "ol/control";
-import { fromLonLat, toLonLat } from "ol/proj";
+import { fromLonLat, toLonLat, transform } from "ol/proj";
 import OLCesium from "olcs/OLCesium";
 import * as CesiumGlobal from "cesium";
 import {
@@ -157,9 +157,14 @@ function resolveLonLat(): [number, number] {
 	const map = getMap();
 	const center = map?.getView().getCenter();
 	if (!center) return [0, 0];
-	// Important: pass the actual view projection (not always EPSG:3857).
+	// OpenLayers' toLonLat assumes EPSG:3857 inputs; if the view projection differs, transform.
 	const projection = map?.getView().getProjection();
-	const [lon, lat] = toLonLat(center, projection);
+	const code = projection?.getCode?.() || "EPSG:3857";
+	const lonLat =
+		code === "EPSG:3857"
+			? (toLonLat(center) as [number, number])
+			: (transform(center, projection as any, "EPSG:4326") as [number, number]);
+	const [lon, lat] = lonLat;
 	return [Number.isFinite(lon) ? lon : 0, Number.isFinite(lat) ? lat : 0];
 }
 
@@ -366,7 +371,10 @@ export default function MapView() {
 			scene.screenSpaceCameraController.inertiaTranslate = 0.9;
 			scene.screenSpaceCameraController.inertiaZoom = 0.85;
 			scene.screenSpaceCameraController.minimumPitch = CesiumMath.toRadians(-89.5);
-			scene.globe.depthTestAgainstTerrain = true;
+			// NOTE: depthTestAgainstTerrain can cause OL-Cesium-synchronized vector features
+			// (property boundary, points/lines/polys) to be hidden because they may render at
+			// ellipsoid height while terrain is above them. Keep overlays visible like onX.
+			scene.globe.depthTestAgainstTerrain = false;
 			scene.globe.enableLighting = false; // Disable lighting for better performance
 			scene.globe.showSkirts = false;
 			scene.globe.maximumScreenSpaceError = 2.5; // Lower quality = better performance
