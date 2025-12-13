@@ -355,6 +355,24 @@ export default function MapView() {
 		});
 		setMap(map);
 
+		// OL-Cesium supports clamping via an `altitudeMode` property on layers/features.
+		// When terrain is enabled, unclamped vectors can appear to "slide" relative to the ground.
+		const setVectorAltitudeMode = (mode: "clampToGround" | undefined) => {
+			try {
+				map.getLayers().forEach((layer: any) => {
+					// apply to vector layers only (best-effort duck typing)
+					const src = layer?.getSource?.();
+					const isVectorLike =
+						!!src && typeof src.getFeatures === "function" && typeof src.on === "function";
+					if (!isVectorLike) return;
+					if (mode) layer.set("altitudeMode", mode);
+					else layer.unset?.("altitudeMode", true);
+				});
+			} catch {
+				// ignore
+			}
+		};
+
 		const abort = { cancelled: false };
 		const initialTerrain = getTerrainState();
 		let unsubscribeBasemap: (() => void) | null = null;
@@ -487,6 +505,13 @@ export default function MapView() {
 			const scene = olCesium.getCesiumScene();
 
 			if (state.enabled !== previous.enabled) {
+				// Clamp vectors when entering 3D so overlays stay glued to the terrain.
+				if (state.enabled) {
+					setVectorAltitudeMode("clampToGround");
+				} else {
+					// restore default behavior in 2D
+					setVectorAltitudeMode(undefined);
+				}
 				olCesium.setEnabled(state.enabled);
 				if (state.enabled) {
 					scene.requestRender();
