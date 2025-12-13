@@ -2,6 +2,7 @@ import { useState } from "react";
 import useAppStore from "../state/store";
 import { exportGPX, exportZipOfGeoJSON } from "../lib/io/exports";
 import { printCurrentMap } from "../lib/io/print";
+import { colors, borderRadius, spacing, typography } from "../lib/theme";
 
 export default function ToolsPanel() {
 	const { projectPath } = useAppStore();
@@ -40,14 +41,18 @@ export default function ToolsPanel() {
 		setTimeout(() => setStatus(""), 4000);
 	};
 
-	const commonButton = {
-		padding: "8px 12px",
-		borderRadius: 6,
-		border: "1px solid rgba(15,23,42,0.12)",
-		background: "#ffffff",
+	const commonButton: React.CSSProperties = {
+		padding: `${spacing.md} ${spacing.lg}`,
+		borderRadius: borderRadius.md,
+		border: `1px solid ${colors.borderMedium}`,
+		background: colors.bgPanelSolid,
 		cursor: "pointer",
-		fontSize: 12
-	} as React.CSSProperties;
+		fontSize: typography.fontSize.sm,
+		fontWeight: typography.fontWeight.medium,
+		color: colors.textPrimary,
+		transition: "all 0.2s ease",
+		textAlign: "left" as const
+	};
 
 	return open ? (
 		<div
@@ -55,23 +60,40 @@ export default function ToolsPanel() {
 				position: "fixed",
 				right: 16,
 				bottom: 16,
-				padding: 12,
-				borderRadius: 10,
-				border: "1px solid rgba(15,23,42,0.12)",
-				background: "rgba(255,255,255,0.96)",
-				boxShadow: "0 10px 24px rgba(15,23,42,0.18)",
+				padding: spacing.lg,
+				borderRadius: borderRadius.lg,
+				border: `1px solid ${colors.borderMedium}`,
+				background: colors.bgPanelSolid,
+				boxShadow: colors.shadowXLarge,
 				zIndex: 1200,
 				display: "flex",
 				flexDirection: "column",
-				gap: 8,
+				gap: spacing.md,
 				minWidth: 220
 			}}
 		>
 			<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-				<strong style={{ fontSize: 12, color: "rgba(15,23,42,0.8)" }}>Tools</strong>
+				<strong style={{ fontSize: typography.fontSize.sm, fontWeight: typography.fontWeight.semibold, color: colors.textPrimary }}>Tools</strong>
 				<button
 					onClick={() => setOpen(false)}
-					style={{ border: "none", background: "transparent", fontSize: 12, cursor: "pointer", color: "rgba(15,23,42,0.6)" }}
+					style={{ 
+						border: "none", 
+						background: "transparent", 
+						fontSize: typography.fontSize.sm, 
+						cursor: "pointer", 
+						color: colors.textMuted,
+						padding: spacing.xs,
+						borderRadius: borderRadius.sm,
+						transition: "all 0.2s ease"
+					}}
+					onMouseEnter={(e) => {
+						e.currentTarget.style.color = colors.textSecondary;
+						e.currentTarget.style.background = colors.bgButton;
+					}}
+					onMouseLeave={(e) => {
+						e.currentTarget.style.color = colors.textMuted;
+						e.currentTarget.style.background = "transparent";
+					}}
 				>
 					Hide
 				</button>
@@ -82,16 +104,40 @@ export default function ToolsPanel() {
 					setOpen(false);
 				}}
 				style={commonButton}
+				onMouseEnter={(e) => {
+					e.currentTarget.style.background = colors.bgButtonHover;
+				}}
+				onMouseLeave={(e) => {
+					e.currentTarget.style.background = colors.bgPanelSolid;
+				}}
 			>
 				Boundary Tools
 			</button>
-			<button onClick={() => void runExport()} style={commonButton}>
+			<button 
+				onClick={() => void runExport()} 
+				style={commonButton}
+				onMouseEnter={(e) => {
+					e.currentTarget.style.background = colors.bgButtonHover;
+				}}
+				onMouseLeave={(e) => {
+					e.currentTarget.style.background = colors.bgPanelSolid;
+				}}
+			>
 				Export
 			</button>
-			<button onClick={() => void runPrint()} style={commonButton}>
+			<button 
+				onClick={() => void runPrint()} 
+				style={commonButton}
+				onMouseEnter={(e) => {
+					e.currentTarget.style.background = colors.bgButtonHover;
+				}}
+				onMouseLeave={(e) => {
+					e.currentTarget.style.background = colors.bgPanelSolid;
+				}}
+			>
 				Print Map
 			</button>
-			{status ? <div style={{ fontSize: 11, color: "#334155" }}>{status}</div> : null}
+			{status ? <div style={{ fontSize: typography.fontSize.xs, color: colors.textSecondary }}>{status}</div> : null}
 		</div>
 	) : (
 		<button
@@ -100,15 +146,25 @@ export default function ToolsPanel() {
 				position: "fixed",
 				right: 16,
 				bottom: 16,
-				padding: "8px 14px",
-				borderRadius: 6,
-				border: "1px solid rgba(15,23,42,0.12)",
-				background: "#ffffff",
+				padding: `${spacing.md} ${spacing.xl}`,
+				borderRadius: borderRadius.md,
+				border: `1px solid ${colors.borderMedium}`,
+				background: colors.bgPanelSolid,
 				cursor: "pointer",
-				fontSize: 13,
-				fontWeight: 500,
+				fontSize: typography.fontSize.base,
+				fontWeight: typography.fontWeight.medium,
+				color: colors.textPrimary,
 				zIndex: 1200,
-				boxShadow: "0 6px 18px rgba(15,23,42,0.12)"
+				boxShadow: colors.shadowMedium,
+				transition: "all 0.2s ease"
+			}}
+			onMouseEnter={(e) => {
+				e.currentTarget.style.background = colors.bgButtonHover;
+				e.currentTarget.style.boxShadow = colors.shadowLarge;
+			}}
+			onMouseLeave={(e) => {
+				e.currentTarget.style.background = colors.bgPanelSolid;
+				e.currentTarget.style.boxShadow = colors.shadowMedium;
 			}}
 			title="Tools"
 		>

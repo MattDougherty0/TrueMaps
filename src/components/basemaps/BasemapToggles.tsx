@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import { useBasemapStore } from "../../state/basemaps";
 import { useHistoricalImagery } from "../../state/historical";
+import { colors, borderRadius, spacing, typography } from "../../lib/theme";
 
 export default function BasemapToggles() {
 	const [open, setOpen] = useState(false);
@@ -14,21 +15,34 @@ export default function BasemapToggles() {
 	const setSelected = useHistoricalImagery((s) => s.setSelected);
 	const addEntry = useHistoricalImagery((s) => s.addEntry);
 	const toggleButtonStyle: CSSProperties = {
-		padding: "6px 12px",
-		borderRadius: 6,
-		border: "1px solid rgba(15,23,42,0.12)",
-		background: "rgba(255,255,255,0.92)",
-		fontSize: 12,
+		padding: `${spacing.sm} ${spacing.lg}`,
+		borderRadius: borderRadius.md,
+		border: `1px solid ${colors.borderMedium}`,
+		background: colors.bgButton,
+		fontSize: typography.fontSize.sm,
+		fontWeight: typography.fontWeight.medium,
 		cursor: "pointer",
-		color: "rgba(15,23,42,0.75)",
-		boxShadow: "0 4px 12px rgba(15,23,42,0.08)",
+		color: colors.textPrimary,
+		boxShadow: colors.shadowSubtle,
 		width: "100%",
-		textAlign: "left"
+		textAlign: "left",
+		transition: "all 0.2s ease"
 	};
 
 	if (!open) {
 		return (
-			<button onClick={() => setOpen(true)} style={toggleButtonStyle}>
+			<button 
+				onClick={() => setOpen(true)} 
+				style={toggleButtonStyle}
+				onMouseEnter={(e) => {
+					e.currentTarget.style.background = colors.bgButtonHover;
+					e.currentTarget.style.boxShadow = colors.shadowMedium;
+				}}
+				onMouseLeave={(e) => {
+					e.currentTarget.style.background = colors.bgButton;
+					e.currentTarget.style.boxShadow = colors.shadowSubtle;
+				}}
+			>
 				Basemaps
 			</button>
 		);
@@ -37,14 +51,14 @@ export default function BasemapToggles() {
 	return (
 		<div
 			style={{
-				padding: "12px 14px",
-				background: "rgba(255,255,255,0.94)",
-				border: "1px solid rgba(15, 23, 42, 0.12)",
-				borderRadius: 6,
-				boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
+				padding: `${spacing.lg} ${spacing.xl}`,
+				background: colors.bgPanel,
+				border: `1px solid ${colors.borderMedium}`,
+				borderRadius: borderRadius.md,
+				boxShadow: colors.shadowLarge,
 				display: "flex",
 				flexDirection: "column",
-				gap: 4,
+				gap: spacing.xs,
 				width: "100%"
 			}}
 		>
@@ -53,15 +67,26 @@ export default function BasemapToggles() {
 				style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
 				title="Click to collapse"
 			>
-				<strong style={{ fontSize: 13, color: "rgba(15,23,42,0.75)" }}>Basemaps</strong>
+				<strong style={{ fontSize: typography.fontSize.base, fontWeight: typography.fontWeight.semibold, color: colors.textPrimary }}>Basemaps</strong>
 				<button
 					onClick={() => setOpen(false)}
 					style={{
 						border: "none",
 						background: "transparent",
-						fontSize: 12,
-						color: "rgba(15,23,42,0.55)",
-						cursor: "pointer"
+						fontSize: typography.fontSize.sm,
+						color: colors.textMuted,
+						cursor: "pointer",
+						padding: spacing.xs,
+						borderRadius: borderRadius.sm,
+						transition: "all 0.2s ease"
+					}}
+					onMouseEnter={(e) => {
+						e.currentTarget.style.color = colors.textSecondary;
+						e.currentTarget.style.background = colors.bgButton;
+					}}
+					onMouseLeave={(e) => {
+						e.currentTarget.style.color = colors.textMuted;
+						e.currentTarget.style.background = "transparent";
 					}}
 				>
 					Hide
@@ -71,63 +96,82 @@ export default function BasemapToggles() {
 				style={{
 					display: "grid",
 					gridTemplateColumns: "1fr 1fr",
-					gap: 6,
-					fontSize: 13,
-					color: "rgba(15,23,42,0.75)"
+					gap: spacing.sm,
+					fontSize: typography.fontSize.base,
+					color: colors.textPrimary
 				}}
 			>
-				<label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+				<label style={{ display: "flex", alignItems: "center", gap: spacing.sm, cursor: "pointer", color: colors.textPrimary }}>
 					<input
 						type="checkbox"
 						checked={visible.topo}
 						onChange={(e) => setVisible("topo", e.target.checked)}
+						style={{ accentColor: colors.primary, cursor: "pointer" }}
 					/>
 					Topo
 				</label>
-				<label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+				<label style={{ display: "flex", alignItems: "center", gap: spacing.sm, cursor: "pointer", color: colors.textPrimary }}>
 					<input
 						type="checkbox"
 						checked={visible.aerial}
 						onChange={(e) => setVisible("aerial", e.target.checked)}
+						style={{ accentColor: colors.primary, cursor: "pointer" }}
 					/>
 					Aerial
 				</label>
-				<label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+				<label style={{ display: "flex", alignItems: "center", gap: spacing.sm, cursor: "pointer", color: colors.textPrimary }}>
 					<input
 						type="checkbox"
 						checked={visible.hillshade}
 						onChange={(e) => setVisible("hillshade", e.target.checked)}
+						style={{ accentColor: colors.primary, cursor: "pointer" }}
 					/>
 					Hillshade
 				</label>
-				<label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+				<label style={{ display: "flex", alignItems: "center", gap: spacing.sm, cursor: "pointer", color: colors.textPrimary }}>
 					<input
 						type="checkbox"
 						checked={visible.slope}
 						onChange={(e) => setVisible("slope", e.target.checked)}
+						style={{ accentColor: colors.primary, cursor: "pointer" }}
 					/>
 					Slope
 				</label>
-				<label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+				<label style={{ display: "flex", alignItems: "center", gap: spacing.sm, cursor: "pointer", color: colors.textPrimary }}>
 					<input
 						type="checkbox"
 						checked={visible.contours}
 						onChange={(e) => setVisible("contours", e.target.checked)}
+						style={{ accentColor: colors.primary, cursor: "pointer" }}
 					/>
 					Contours
 				</label>
 			</div>
-			<hr style={{ border: "none", borderTop: "1px solid rgba(15,23,42,0.12)", margin: "8px 0" }} />
-			<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-				<input type="checkbox" checked={histEnabled} onChange={(e) => setHistEnabled(e.target.checked)} />
-				<span style={{ fontWeight: 600, fontSize: 12 }}>Historical Imagery</span>
+			<hr style={{ border: "none", borderTop: `1px solid ${colors.borderMedium}`, margin: `${spacing.md} 0` }} />
+			<div style={{ display: "flex", alignItems: "center", gap: spacing.md }}>
+				<input 
+					type="checkbox" 
+					checked={histEnabled} 
+					onChange={(e) => setHistEnabled(e.target.checked)}
+					style={{ accentColor: colors.primary, cursor: "pointer" }}
+				/>
+				<span style={{ fontWeight: typography.fontWeight.semibold, fontSize: typography.fontSize.sm, color: colors.textPrimary }}>Historical Imagery</span>
 			</div>
 			{histEnabled ? (
-				<div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 6 }}>
+				<div style={{ display: "flex", gap: spacing.sm, alignItems: "center", marginTop: spacing.sm }}>
 					<select
 						value={selectedId || ""}
 						onChange={(e) => setSelected(e.target.value || null)}
-						style={{ flex: 1, fontSize: 12, padding: "4px 6px" }}
+						style={{ 
+							flex: 1, 
+							fontSize: typography.fontSize.sm, 
+							padding: `${spacing.xs} ${spacing.sm}`,
+							borderRadius: borderRadius.sm,
+							border: `1px solid ${colors.border}`,
+							background: colors.bgPanelSolid,
+							color: colors.textPrimary,
+							cursor: "pointer"
+						}}
 					>
 						<option value="">— Select —</option>
 						{entries
@@ -170,7 +214,25 @@ export default function BasemapToggles() {
 								});
 							}
 						}}
-						style={{ fontSize: 12, padding: "4px 8px" }}
+						style={{ 
+							fontSize: typography.fontSize.sm, 
+							padding: `${spacing.xs} ${spacing.md}`,
+							borderRadius: borderRadius.sm,
+							border: `1px solid ${colors.border}`,
+							background: colors.bgButton,
+							color: colors.textSecondary,
+							cursor: "pointer",
+							fontWeight: typography.fontWeight.medium,
+							transition: "all 0.2s ease"
+						}}
+						onMouseEnter={(e) => {
+							e.currentTarget.style.background = colors.bgButtonHover;
+							e.currentTarget.style.color = colors.textPrimary;
+						}}
+						onMouseLeave={(e) => {
+							e.currentTarget.style.background = colors.bgButton;
+							e.currentTarget.style.color = colors.textSecondary;
+						}}
 					>
 						Add
 					</button>
