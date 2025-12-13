@@ -176,8 +176,10 @@ const useAppStore = create<AppState>((set) => ({
 			if (nextActiveId && !props.some((p) => p.id === nextActiveId)) {
 				nextActiveId = null;
 			}
-			if (!nextActiveId && props.length === 1) {
-				nextActiveId = props[0].id;
+			// If the project has properties but no active selection yet, default to the first property.
+			// Users can switch via the Property dropdown in the UI.
+			if (!nextActiveId) {
+				nextActiveId = props[0]?.id || null;
 			}
 
 			// Ensure all expected data files exist (older projects may be missing newer layers)
