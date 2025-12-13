@@ -14,6 +14,8 @@ import {
 	EllipsoidTerrainProvider,
 	createWorldTerrainAsync,
 	Cartesian3,
+	HeadingPitchRange,
+	BoundingSphere,
 	EasingFunction,
 	ArcGisMapServerImageryProvider,
 	WebMercatorTilingScheme,
@@ -155,7 +157,9 @@ function resolveLonLat(): [number, number] {
 	const map = getMap();
 	const center = map?.getView().getCenter();
 	if (!center) return [0, 0];
-	const [lon, lat] = toLonLat(center);
+	// Important: pass the actual view projection (not always EPSG:3857).
+	const projection = map?.getView().getProjection();
+	const [lon, lat] = toLonLat(center, projection);
 	return [Number.isFinite(lon) ? lon : 0, Number.isFinite(lat) ? lat : 0];
 }
 
@@ -165,26 +169,34 @@ function applyCameraPose(olCesium: OLCesium, camera: CameraState, options: Camer
 	const headingRad = CesiumMath.toRadians(camera.heading);
 	const pitchRad = -CesiumMath.toRadians(camera.pitch);
 	const [lon, lat] = options.lonLat ?? resolveLonLat();
-	const height = Math.max(40, options.heightOverride ?? camera.height);
-	const destination = Cartesian3.fromDegrees(lon, lat, height);
-	const orientation = {
-		heading: headingRad,
-		pitch: pitchRad,
-		roll: 0
-	};
+	const range = Math.max(40, options.heightOverride ?? camera.height);
+	// Keep the *ground target* fixed at the current 2D center, otherwise a pitched camera
+	// placed "above" the center will look away and appear to shift the map by miles.
+	const target = Cartesian3.fromDegrees(lon, lat, 0);
+	const offset = new HeadingPitchRange(headingRad, pitchRad, range);
 
 	if (options.animate) {
-		scene.camera.flyTo({
-			destination,
-			orientation,
+		scene.camera.flyToBoundingSphere(new BoundingSphere(target, 0), {
+			offset,
 			duration: options.duration ?? 1.2,
-			easingFunction: EasingFunction.QUADRATIC_OUT
+			easingFunction: EasingFunction.QUADRATIC_OUT,
+			complete: () => {
+				// Reset any lookAt transform so user navigation behaves normally.
+				try {
+					scene.camera.lookAtTransform(CesiumGlobal.Matrix4.IDENTITY);
+				} catch {
+					// ignore
+				}
+			}
 		});
 	} else {
-		scene.camera.setView({
-			destination,
-			orientation
-		});
+		scene.camera.lookAt(target, offset);
+		// Reset any lookAt transform so user navigation behaves normally.
+		try {
+			scene.camera.lookAtTransform(CesiumGlobal.Matrix4.IDENTITY);
+		} catch {
+			// ignore
+		}
 	}
 
 	// Maintain pitch constraints in case sliders extend beyond controller limits.
