@@ -9,7 +9,7 @@ import {
 } from "../../lib/historical/providers";
 
 export default function HistoricalAutoPopulate() {
-	const { projectPath, pendingView, hasBoundary } = useAppStore();
+	const { projectPath, pendingView, hasBoundary, properties, activePropertyId } = useAppStore();
 	const addEntry = useHistoricalImagery((s) => s.addEntry);
 	const entries = useHistoricalImagery((s) => s.entries);
 	const setEnabled = useHistoricalImagery((s) => s.setEnabled);
@@ -26,7 +26,10 @@ export default function HistoricalAutoPopulate() {
 				// If pendingView not set, try reading boundary center directly
 				if ((!Number.isFinite(lon) || !Number.isFinite(lat)) && hasBoundary) {
 					try {
-						const boundaryStr = await window.api.readTextFile(projectPath, "data/property_boundary.geojson");
+						const boundaryFile =
+							properties.find((p) => p.id === activePropertyId)?.boundaryFile ||
+							"property_boundary.geojson";
+						const boundaryStr = await window.api.readTextFile(projectPath, `data/${boundaryFile}`);
 						if (boundaryStr) {
 							const boundary = JSON.parse(boundaryStr) as any;
 							const firstCoords: number[][] | undefined = boundary?.features?.[0]?.geometry?.coordinates?.[0];

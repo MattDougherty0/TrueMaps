@@ -26,7 +26,10 @@ export default function BoundaryTools({ useExternalToggle = false }: { useExtern
 	const sourceRef = useRef<VectorSource>(new VectorSource());
 	const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
 	const drawRef = useRef<Draw | null>(null);
-	const { projectPath, setCrsFromLonLat, hasBoundary, setHasBoundary } = useAppStore();
+	const { projectPath, setCrsFromLonLat, hasBoundary, setHasBoundary, properties, activePropertyId } =
+		useAppStore();
+	const boundaryFile =
+		properties.find((p) => p.id === activePropertyId)?.boundaryFile || "property_boundary.geojson";
 
 	const map = useMapInstance();
 
@@ -117,13 +120,13 @@ export default function BoundaryTools({ useExternalToggle = false }: { useExtern
 			const fc = { type: "FeatureCollection", features: [gj] };
 			await window.api.writeTextFile(
 				projectPath,
-				"data/property_boundary.geojson",
+				`data/${boundaryFile}`,
 				JSON.stringify(fc, null, 2)
 			);
 			void setCrsFromLonLat(centroid[0], centroid[1]);
 			setHasBoundary(true);
 		},
-		[projectPath, map, setCrsFromLonLat, setHasBoundary]
+		[projectPath, map, setCrsFromLonLat, setHasBoundary, boundaryFile]
 	);
 
 	const onImportClick = () => {

@@ -20,7 +20,7 @@ import { useSelectionStore } from "../../state/selection";
 
 export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 	const cfg = layerConfigById[layerId];
-	const { projectPath } = useAppStore();
+	const { projectPath, properties, activePropertyId } = useAppStore();
 	const map = useMapInstance();
 	const sourceRef = useRef<VectorSource>(new VectorSource());
 	const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -29,6 +29,11 @@ export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 	const selectRef = useRef<Select | null>(null);
 	const persistRef = useRef<() => Promise<void>>(async () => {});
 	const [editing, setEditing] = useState<{ f: Feature; initial?: Record<string, unknown> } | null>(null);
+
+	const effectiveFile =
+		layerId === "property_boundary"
+			? properties.find((p) => p.id === activePropertyId)?.boundaryFile || "property_boundary.geojson"
+			: cfg.file;
 
 	useEffect(() => {
 		if (!map || !projectPath) return;
@@ -102,7 +107,7 @@ export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 			});
 			await window.api.writeTextFile(
 				projectPath,
-				`data/${cfg.file}`,
+				`data/${effectiveFile}`,
 				JSON.stringify(gj, null, 2)
 			);
 		};
@@ -110,7 +115,7 @@ export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 
 		const reload = async () => {
 			try {
-				const text = await window.api.readTextFile(projectPath, `data/${cfg.file}`);
+				const text = await window.api.readTextFile(projectPath, `data/${effectiveFile}`);
 				const geojson = JSON.parse(text || "{\"type\":\"FeatureCollection\",\"features\":[]}");
 				const feats = new GeoJSON().readFeatures(geojson, {
 					dataProjection: "EPSG:4326",
@@ -132,9 +137,9 @@ export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 				if (msg.includes("ENOENT")) {
 					try {
 						const emptyFC = JSON.stringify({ type: "FeatureCollection", features: [] }, null, 2);
-						await window.api.writeTextFile(projectPath, `data/${cfg.file}`, emptyFC);
+						await window.api.writeTextFile(projectPath, `data/${effectiveFile}`, emptyFC);
 						// try loading again after seeding
-						const text = await window.api.readTextFile(projectPath, `data/${cfg.file}`);
+						const text = await window.api.readTextFile(projectPath, `data/${effectiveFile}`);
 						const geojson = JSON.parse(text || "{\"type\":\"FeatureCollection\",\"features\":[]}");
 						const feats = new GeoJSON().readFeatures(geojson, {
 							dataProjection: "EPSG:4326",
@@ -274,7 +279,7 @@ export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 			selectRef.current = null;
 			layerRef.current = null;
 		};
-	}, [map, projectPath, layerId, cfg]);
+	}, [map, projectPath, layerId, cfg, effectiveFile]);
 
 	const onSubmit = async (values: Record<string, unknown>) => {
 		if (!editing) return;

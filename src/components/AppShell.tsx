@@ -29,6 +29,7 @@ import UserSelector from "./UserSelector";
 import ToolsPanel from "./ToolsPanel";
 import TerrainControls from "./TerrainControls";
 import HistoricalAutoPopulate from "./basemaps/HistoricalAutoPopulate";
+import { colors, borderRadius, spacing, typography } from "../lib/theme";
 
 function Landing() {
 	const { createNewProject, openExistingProject, loading } = useAppStore();
@@ -55,11 +56,92 @@ function Landing() {
 	);
 }
 
+function PropertyPicker() {
+	const { properties, activePropertyId, setActivePropertyId, projectName } = useAppStore();
+	if (!properties || properties.length <= 1 || activePropertyId) return null;
+	return (
+		<div
+			style={{
+				position: "fixed",
+				inset: 0,
+				background: colors.overlay,
+				zIndex: 5000,
+				display: "grid",
+				placeItems: "center",
+				padding: spacing.xxl
+			}}
+		>
+			<div
+				style={{
+					width: "min(560px, 92vw)",
+					background: colors.bgPanelSolid,
+					border: `1px solid ${colors.borderMedium}`,
+					borderRadius: borderRadius.xl,
+					boxShadow: colors.shadowXLarge,
+					padding: spacing.xxxl
+				}}
+				onClick={(e) => e.stopPropagation()}
+			>
+				<div style={{ marginBottom: spacing.xl }}>
+					<div style={{ fontSize: typography.fontSize.xl, fontWeight: typography.fontWeight.semibold, color: colors.textPrimary }}>
+						Select Property
+					</div>
+					<div style={{ fontSize: typography.fontSize.sm, color: colors.textMuted, marginTop: spacing.xs }}>
+						{projectName ? `Project: ${projectName}` : "Choose which property to open so we can auto-zoom correctly."}
+					</div>
+				</div>
+
+				<div style={{ display: "flex", flexDirection: "column", gap: spacing.md }}>
+					{properties.map((p) => (
+						<button
+							key={p.id}
+							type="button"
+							onClick={() => void setActivePropertyId(p.id)}
+							style={{
+								padding: `${spacing.lg} ${spacing.xxl}`,
+								borderRadius: borderRadius.lg,
+								border: `1px solid ${colors.borderMedium}`,
+								background: colors.bgButton,
+								color: colors.textPrimary,
+								fontSize: typography.fontSize.lg,
+								fontWeight: typography.fontWeight.semibold,
+								cursor: "pointer",
+								textAlign: "left",
+								transition: "all 0.2s ease"
+							}}
+							onMouseEnter={(e) => {
+								e.currentTarget.style.background = colors.bgButtonHover;
+								e.currentTarget.style.borderColor = colors.primaryBorder;
+								e.currentTarget.style.boxShadow = colors.shadowMedium;
+							}}
+							onMouseLeave={(e) => {
+								e.currentTarget.style.background = colors.bgButton;
+								e.currentTarget.style.borderColor = colors.borderMedium;
+								e.currentTarget.style.boxShadow = "none";
+							}}
+						>
+							{p.name}
+							<div style={{ fontSize: typography.fontSize.sm, fontWeight: typography.fontWeight.medium, color: colors.textMuted, marginTop: spacing.xs }}>
+								Auto-zoom + boundary: <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{p.boundaryFile}</span>
+							</div>
+						</button>
+					))}
+				</div>
+
+				<div style={{ marginTop: spacing.xxl, fontSize: typography.fontSize.sm, color: colors.textMuted }}>
+					Tip: we can add more properties later by updating <code style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>project.json</code>.
+				</div>
+			</div>
+		</div>
+	);
+}
+
 export default function AppShell() {
 	const { projectPath, pendingView, setPendingView } = useAppStore();
 	return projectPath ? (
 		<>
 			<MapView />
+			<PropertyPicker />
 			<BasemapLayers />
 			<HistoricalAutoPopulate />
 			<ContoursOverlay />
