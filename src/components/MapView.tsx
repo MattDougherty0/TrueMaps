@@ -6,6 +6,7 @@ import View from "ol/View";
 import { defaults as defaultControls, ScaleLine, FullScreen } from "ol/control";
 import { fromLonLat, toLonLat, transform } from "ol/proj";
 import OLCesium from "olcs/OLCesium";
+import { RasterSynchronizer, VectorSynchronizer, OverlaySynchronizer } from "olcs";
 import * as CesiumGlobal from "cesium";
 import {
 	Ion,
@@ -250,6 +251,8 @@ export default function MapView() {
 		};
 
 		let olCesium: OLCesium | null = null;
+		// Keep a handle so we can force a resync when switching modes.
+		let vectorSync: any | null = null;
 
 		const clearCesiumBasemaps = () => {
 			if (!olCesium) return;
@@ -378,7 +381,20 @@ export default function MapView() {
 		let unsubscribeBasemap: (() => void) | null = null;
 		let removeTileProgressListener: (() => void) | null = null;
 		try {
-			olCesium = new OLCesium({ map, target: mapRef.current });
+			olCesium = new OLCesium({
+				map,
+				target: mapRef.current,
+				// Capture synchronizers so we can rebuild vectors when enabling 3D.
+				createSynchronizers: (m: any, scene: any, dataSources: any) => {
+					const raster = new (RasterSynchronizer as any)(m, scene);
+					const vector = new (VectorSynchronizer as any)(m, scene);
+					const overlay = new (OverlaySynchronizer as any)(m, scene);
+					vectorSync = vector;
+					// Note: we still use raster/overlay synchronizers; raster layers with `olcs_skip`
+					// are ignored (we manage Cesium basemaps ourselves).
+					return [raster, vector, overlay];
+				}
+			});
 			const scene = olCesium.getCesiumScene();
 			scene.screenSpaceCameraController.enableTilt = true;
 			scene.screenSpaceCameraController.minimumZoomDistance = 50;
@@ -514,6 +530,16 @@ export default function MapView() {
 				}
 				olCesium.setEnabled(state.enabled);
 				if (state.enabled) {
+					// Force re-sync of vector layers *after* we set altitudeMode, because OL-Cesium
+					// synchronizers are constructed early and may have already built counterparts.
+					try {
+						if (vectorSync && typeof vectorSync.destroyAll === "function" && typeof vectorSync.synchronize === "function") {
+							vectorSync.destroyAll();
+							vectorSync.synchronize();
+						}
+					} catch (err) {
+						console.warn("[cesium] Failed to rebuild vector synchronizer", err);
+					}
 					scene.requestRender();
 					requestAnimationFrame(() => {
 						const cameraState = getCameraState();
