@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { useVisibilityStore } from "../state/visibility";
 import { useFiltersStore } from "../state/filters";
 import type { LayerId } from "../lib/geo/schema";
+import { colors, borderRadius, spacing, typography } from "../lib/theme";
 
 export default function LayerPresets() {
 	const [open, setOpen] = useState(false);
@@ -17,21 +18,34 @@ export default function LayerPresets() {
 	const setSpecies = useFiltersStore((s) => s.setSpecies);
 	const setLayerOverride = useVisibilityStore((s) => s.setLayerOverride);
 	const toggleButtonStyle: CSSProperties = {
-		padding: "6px 12px",
-		borderRadius: 6,
-		border: "1px solid rgba(15, 23, 42, 0.12)",
-		background: "rgba(255, 255, 255, 0.92)",
-		fontSize: 12,
+		padding: `${spacing.sm} ${spacing.lg}`,
+		borderRadius: borderRadius.md,
+		border: `1px solid ${colors.borderMedium}`,
+		background: colors.bgButton,
+		fontSize: typography.fontSize.sm,
+		fontWeight: typography.fontWeight.medium,
 		cursor: "pointer",
-		color: "rgba(15,23,42,0.75)",
-		boxShadow: "0 4px 12px rgba(15,23,42,0.08)",
+		color: colors.textPrimary,
+		boxShadow: colors.shadowSubtle,
 		width: "100%",
-		textAlign: "left"
+		textAlign: "left",
+		transition: "all 0.2s ease"
 	};
 
 	if (!open) {
 		return (
-			<button onClick={() => setOpen(true)} style={toggleButtonStyle}>
+			<button 
+				onClick={() => setOpen(true)} 
+				style={toggleButtonStyle}
+				onMouseEnter={(e) => {
+					e.currentTarget.style.background = colors.bgButtonHover;
+					e.currentTarget.style.boxShadow = colors.shadowMedium;
+				}}
+				onMouseLeave={(e) => {
+					e.currentTarget.style.background = colors.bgButton;
+					e.currentTarget.style.boxShadow = colors.shadowSubtle;
+				}}
+			>
 				Layer Presets
 			</button>
 		);
@@ -41,25 +55,27 @@ export default function LayerPresets() {
 		display: "flex",
 		alignItems: "center",
 		justifyContent: "space-between",
-		padding: "6px 10px",
-		borderRadius: 4,
-		border: "1px solid rgba(15,23,42,0.12)",
-		background: active ? "rgba(10,132,255,0.12)" : "#f7f9fc",
-		fontSize: 12,
-		color: active ? "#0a84ff" : "rgba(15,23,42,0.75)",
-		fontWeight: active ? 600 : 500
+		padding: `${spacing.sm} ${spacing.lg}`,
+		borderRadius: borderRadius.sm,
+		border: `1px solid ${active ? colors.primaryBorder : colors.borderMedium}`,
+		background: active ? colors.primaryLight : colors.bgSecondary,
+		fontSize: typography.fontSize.sm,
+		color: active ? colors.primary : colors.textPrimary,
+		fontWeight: active ? typography.fontWeight.semibold : typography.fontWeight.medium,
+		cursor: "pointer",
+		transition: "all 0.2s ease"
 	});
 	return (
 		<div
 			style={{
 				display: "flex",
 				flexDirection: "column",
-				gap: 4,
-				padding: "12px 14px",
-				borderRadius: 6,
-				border: "1px solid rgba(15, 23, 42, 0.12)",
-				background: "rgba(255, 255, 255, 0.94)",
-				boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
+				gap: spacing.xs,
+				padding: `${spacing.lg} ${spacing.xl}`,
+				borderRadius: borderRadius.md,
+				border: `1px solid ${colors.borderMedium}`,
+				background: colors.bgPanel,
+				boxShadow: colors.shadowLarge,
 				width: "100%"
 			}}
 		>
@@ -68,26 +84,50 @@ export default function LayerPresets() {
 				style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
 				title="Click to collapse"
 			>
-				<div style={{ fontSize: 13, fontWeight: 600, color: "rgba(15,23,42,0.75)" }}>Layer Presets</div>
+				<div style={{ fontSize: typography.fontSize.base, fontWeight: typography.fontWeight.semibold, color: colors.textPrimary }}>Layer Presets</div>
 				<button
 					onClick={() => setOpen(false)}
 					style={{
 						border: "none",
 						background: "transparent",
-						fontSize: 12,
-						color: "rgba(15,23,42,0.55)",
-						cursor: "pointer"
+						fontSize: typography.fontSize.sm,
+						color: colors.textMuted,
+						cursor: "pointer",
+						padding: spacing.xs,
+						borderRadius: borderRadius.sm,
+						transition: "all 0.2s ease"
+					}}
+					onMouseEnter={(e) => {
+						e.currentTarget.style.color = colors.textSecondary;
+						e.currentTarget.style.background = colors.bgButton;
+					}}
+					onMouseLeave={(e) => {
+						e.currentTarget.style.color = colors.textMuted;
+						e.currentTarget.style.background = "transparent";
 					}}
 				>
 					Hide
 				</button>
 			</div>
-			<label style={rowStyle(preset === "terrain")}>
+			<label 
+				style={rowStyle(preset === "terrain")}
+				onMouseEnter={(e) => {
+					if (preset !== "terrain") {
+						e.currentTarget.style.background = colors.bgButton;
+					}
+				}}
+				onMouseLeave={(e) => {
+					if (preset !== "terrain") {
+						e.currentTarget.style.background = colors.bgSecondary;
+					}
+				}}
+			>
 				<span>Terrain Only</span>
 				<input
 					type="checkbox"
 					checked={preset === "terrain"}
 					onChange={() => setPreset(preset === "terrain" ? "everything" : "terrain")}
+					style={{ accentColor: colors.primary, cursor: "pointer" }}
 				/>
 			</label>
 			<label style={rowStyle(preset === "sign")}>
@@ -114,7 +154,7 @@ export default function LayerPresets() {
 					onChange={() => setPreset("everything")}
 				/>
 			</label>
-			<hr style={{ border: "none", borderTop: "1px solid rgba(15,23,42,0.12)", margin: "6px 0" }} />
+			<hr style={{ border: "none", borderTop: `1px solid ${colors.borderMedium}`, margin: `${spacing.sm} 0` }} />
 			<label style={rowStyle(temporalView === "permanentOnly")}>
 				<span>Historical (Permanent)</span>
 				<input
@@ -187,7 +227,7 @@ export default function LayerPresets() {
 					}}
 				/>
 			</label>
-			<hr style={{ border: "none", borderTop: "1px solid rgba(15,23,42,0.12)", margin: "6px 0" }} />
+			<hr style={{ border: "none", borderTop: `1px solid ${colors.borderMedium}`, margin: `${spacing.sm} 0` }} />
 			<label style={rowStyle(timeWindow === "1y")}>
 				<span>1 Year</span>
 				<input

@@ -3,6 +3,7 @@ import { layerConfigById, layerOrder } from "../lib/geo/layerConfig";
 import type { LayerId } from "../lib/geo/schema";
 import { useVisibilityStore } from "../state/visibility";
 import { shallow } from "zustand/shallow";
+import { colors, borderRadius, spacing, typography } from "../lib/theme";
 
 type CategoryKey = "property" | "terrain" | "habitat" | "animal" | "stands";
 
@@ -69,14 +70,25 @@ export default function LegendPanel() {
 					position: "fixed",
 					left: 12,
 					top: 12,
-					padding: "8px 14px",
-					borderRadius: 6,
-					border: "1px solid rgba(15,23,42,0.12)",
-					background: "#ffffff",
-					fontSize: 13,
+					padding: `${spacing.md} ${spacing.xl}`,
+					borderRadius: borderRadius.md,
+					border: `1px solid ${colors.borderMedium}`,
+					background: colors.bgPanelSolid,
+					fontSize: typography.fontSize.base,
+					fontWeight: typography.fontWeight.medium,
+					color: colors.textPrimary,
 					zIndex: 1000,
 					cursor: "pointer",
-					boxShadow: "0 6px 18px rgba(15,23,42,0.12)"
+					boxShadow: colors.shadowMedium,
+					transition: "all 0.2s ease"
+				}}
+				onMouseEnter={(e) => {
+					e.currentTarget.style.background = colors.bgButtonHover;
+					e.currentTarget.style.boxShadow = colors.shadowLarge;
+				}}
+				onMouseLeave={(e) => {
+					e.currentTarget.style.background = colors.bgPanelSolid;
+					e.currentTarget.style.boxShadow = colors.shadowMedium;
 				}}
 			>
 				Show layers
@@ -93,11 +105,11 @@ export default function LegendPanel() {
 				top: 12,
 				maxHeight: "70vh",
 				overflow: "auto",
-				padding: "12px 14px",
-				background: "rgba(255,255,255,0.94)",
-				border: "1px solid rgba(15, 23, 42, 0.12)",
-				borderRadius: 6,
-				boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
+				padding: `${spacing.lg} ${spacing.xl}`,
+				background: colors.bgPanel,
+				border: `1px solid ${colors.borderMedium}`,
+				borderRadius: borderRadius.md,
+				boxShadow: colors.shadowLarge,
 				zIndex: 1100,
 				minWidth: 220
 			}}
@@ -107,15 +119,26 @@ export default function LegendPanel() {
 				style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
 				title="Click to collapse"
 			>
-				<strong style={{ fontSize: 14 }}>Legend</strong>
+				<strong style={{ fontSize: typography.fontSize.md, fontWeight: typography.fontWeight.semibold, color: colors.textPrimary }}>Legend</strong>
 				<button
 					onClick={() => setOpen(false)}
 					style={{
 						border: "none",
 						background: "transparent",
-						fontSize: 12,
-						color: "rgba(0,0,0,0.6)",
-						cursor: "pointer"
+						fontSize: typography.fontSize.sm,
+						color: colors.textMuted,
+						cursor: "pointer",
+						padding: spacing.xs,
+						borderRadius: borderRadius.sm,
+						transition: "all 0.2s ease"
+					}}
+					onMouseEnter={(e) => {
+						e.currentTarget.style.color = colors.textSecondary;
+						e.currentTarget.style.background = colors.bgButton;
+					}}
+					onMouseLeave={(e) => {
+						e.currentTarget.style.color = colors.textMuted;
+						e.currentTarget.style.background = "transparent";
 					}}
 				>
 					Hide
@@ -128,10 +151,10 @@ export default function LegendPanel() {
 						<div
 							key={category.key}
 							style={{
-								border: "1px solid rgba(15,23,42,0.12)",
-								borderRadius: 6,
+								border: `1px solid ${colors.borderMedium}`,
+								borderRadius: borderRadius.md,
 								overflow: "hidden",
-								background: "rgba(247,249,252,0.85)"
+								background: colors.bgSecondary
 							}}
 						>
 							<button
@@ -146,39 +169,77 @@ export default function LegendPanel() {
 									display: "flex",
 									alignItems: "center",
 									justifyContent: "space-between",
-									padding: "8px 10px",
-									background: "rgba(255,255,255,0.95)",
+									padding: `${spacing.md} ${spacing.lg}`,
+									background: colors.bgPanelSolid,
 									border: "none",
 									outline: "none",
 									cursor: "pointer",
-									fontSize: 12,
-									fontWeight: 600,
-									color: "rgba(15,23,42,0.75)"
+									fontSize: typography.fontSize.sm,
+									fontWeight: typography.fontWeight.semibold,
+									color: colors.textPrimary,
+									transition: "all 0.2s ease"
+								}}
+								onMouseEnter={(e) => {
+									e.currentTarget.style.background = colors.bgButtonHover;
+								}}
+								onMouseLeave={(e) => {
+									e.currentTarget.style.background = colors.bgPanelSolid;
 								}}
 							>
-								<span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+								<span style={{ display: "flex", alignItems: "center", gap: spacing.sm }}>
 									<span>{category.icon}</span>
 									{category.title}
 								</span>
-								<span style={{ fontSize: 12, color: "rgba(15,23,42,0.55)" }}>
+								<span style={{ fontSize: typography.fontSize.sm, color: colors.textLight }}>
 									{expanded ? "▾" : "▸"}
 								</span>
 							</button>
 							{expanded ? (
-								<div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "8px 10px" }}>
+								<div style={{ display: "flex", flexDirection: "column", gap: spacing.sm, padding: `${spacing.md} ${spacing.lg}` }}>
 									{category.layerIds.map((id) => {
 										const cfg = layerConfigById[id];
 										// Show small/large swatch examples for dynamic layers
 										const isDynamic = ["trees_points", "big_rocks"].includes(id);
 										return (
-											<div key={id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-												<input type="checkbox" checked={isVisible(id)} onChange={(e) => setOverride(id, e.target.checked)} style={{ accentColor: "#3b82f6" }} />
-												<span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+											<div key={id} style={{ display: "flex", alignItems: "center", gap: spacing.md }}>
+												<input 
+													type="checkbox" 
+													checked={isVisible(id)} 
+													onChange={(e) => setOverride(id, e.target.checked)} 
+													style={{ accentColor: colors.primary, cursor: "pointer" }} 
+												/>
+												<span style={{ display: "flex", alignItems: "center", gap: spacing.sm, flex: 1, color: colors.textPrimary }}>
 													{cfg.icon && <span style={{ fontSize: 16 }}>{cfg.icon}</span>}
 													<span>{cfg.label}</span>
 												</span>
-												{isDynamic && <div style={{ fontSize: 10, color: "rgba(15,23,42,0.55)" }}> (Small | Large)</div>}
-												{cfg.addable && <button onClick={() => window.dispatchEvent(new Event(`add-feature-${id}`))} style={{ marginLeft: "auto", fontSize: 11, padding: "2px 8px" }}>Add</button>}
+												{isDynamic && <div style={{ fontSize: typography.fontSize.xs, color: colors.textLight }}> (Small | Large)</div>}
+												{cfg.addable && (
+													<button 
+														onClick={() => window.dispatchEvent(new Event(`add-feature-${id}`))} 
+														style={{ 
+															marginLeft: "auto", 
+															fontSize: typography.fontSize.xs, 
+															padding: `${spacing.xs} ${spacing.md}`,
+															borderRadius: borderRadius.sm,
+															border: `1px solid ${colors.border}`,
+															background: colors.bgButton,
+															color: colors.textSecondary,
+															cursor: "pointer",
+															fontWeight: typography.fontWeight.medium,
+															transition: "all 0.2s ease"
+														}}
+														onMouseEnter={(e) => {
+															e.currentTarget.style.background = colors.bgButtonHover;
+															e.currentTarget.style.color = colors.textPrimary;
+														}}
+														onMouseLeave={(e) => {
+															e.currentTarget.style.background = colors.bgButton;
+															e.currentTarget.style.color = colors.textSecondary;
+														}}
+													>
+														Add
+													</button>
+												)}
 											</div>
 										);
 									})}

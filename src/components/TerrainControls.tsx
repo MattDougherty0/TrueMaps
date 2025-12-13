@@ -1,66 +1,32 @@
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTerrainPreferences } from "../state/terrain";
 import { useCameraPreferences } from "../state/camera";
+import { colors, borderRadius, spacing, typography } from "../lib/theme";
 
-const containerStyle: React.CSSProperties = {
-	display: "flex",
-	flexDirection: "column",
-	gap: 8,
-	padding: 12,
-	borderRadius: 10,
-	background: "rgba(255,255,255,0.95)",
-	border: "1px solid rgba(15,23,42,0.1)",
-	boxShadow: "0 8px 18px rgba(15,23,42,0.08)"
-};
+	const buttonRowStyle: React.CSSProperties = {
+		display: "flex",
+		gap: spacing.sm
+	};
 
-const badgeStyle: React.CSSProperties = {
-	fontSize: 11,
-	fontWeight: 600,
-	color: "rgba(15,23,42,0.65)",
-	textTransform: "uppercase",
-	letterSpacing: 0.8
-};
+	// Define slider and helper styles using theme
+	const sliderStyle: React.CSSProperties = {
+		width: "100%",
+		accentColor: colors.primary
+	};
 
-const buttonRowStyle: React.CSSProperties = {
-	display: "flex",
-	gap: 6
-};
+	const sliderLabelStyle: React.CSSProperties = {
+		display: "flex",
+		justifyContent: "space-between",
+		fontSize: typography.fontSize.sm,
+		color: colors.textPrimary,
+		fontWeight: typography.fontWeight.medium
+	};
 
-const modeButtonBase: React.CSSProperties = {
-	flex: 1,
-	padding: "6px 10px",
-	fontSize: 12,
-	borderRadius: 6,
-	border: "1px solid rgba(15,23,42,0.12)",
-	background: "#f8fafc",
-	cursor: "pointer",
-	fontWeight: 500
-};
-
-const modeButtonActive: React.CSSProperties = {
-	...modeButtonBase,
-	background: "#0f172a",
-	color: "#ffffff",
-	border: "1px solid rgba(15,23,42,0.4)",
-	boxShadow: "0 4px 12px rgba(15,23,42,0.2)"
-};
-
-const sliderStyle: React.CSSProperties = {
-	width: "100%"
-};
-
-const helperTextStyle: React.CSSProperties = {
-	fontSize: 11,
-	color: "rgba(15,23,42,0.6)",
-	lineHeight: 1.3
-};
-
-const sliderLabelStyle: React.CSSProperties = {
-	display: "flex",
-	justifyContent: "space-between",
-	fontSize: 12,
-	color: "rgba(15,23,42,0.75)"
-};
+	const helperTextStyle: React.CSSProperties = {
+		fontSize: typography.fontSize.xs,
+		color: colors.textMuted,
+		lineHeight: typography.lineHeight.normal
+	};
 
 export default function TerrainControls() {
 	const [open, setOpen] = useState(false);
@@ -139,22 +105,56 @@ export default function TerrainControls() {
 	};
 
 	const toggleButtonStyle: React.CSSProperties = {
-		padding: "6px 12px",
-		borderRadius: 6,
-		border: "1px solid rgba(15,23,42,0.12)",
-		background: "rgba(255,255,255,0.92)",
-		fontSize: 12,
+		padding: `${spacing.sm} ${spacing.lg}`,
+		borderRadius: borderRadius.md,
+		border: `1px solid ${colors.borderMedium}`,
+		background: colors.bgButton,
+		fontSize: typography.fontSize.sm,
+		fontWeight: typography.fontWeight.medium,
 		cursor: "pointer",
-		color: "rgba(15,23,42,0.75)",
-		boxShadow: "0 4px 12px rgba(15,23,42,0.08)",
+		color: colors.textPrimary,
+		boxShadow: colors.shadowSubtle,
 		width: "100%",
-		textAlign: "left"
+		textAlign: "left",
+		transition: "all 0.2s ease"
+	};
+
+	const modeButtonBase: React.CSSProperties = {
+		flex: 1,
+		padding: `${spacing.sm} ${spacing.lg}`,
+		fontSize: typography.fontSize.sm,
+		borderRadius: borderRadius.md,
+		border: `1px solid ${colors.borderMedium}`,
+		background: colors.bgButton,
+		cursor: "pointer",
+		fontWeight: typography.fontWeight.medium,
+		color: colors.textPrimary,
+		transition: "all 0.2s ease"
+	};
+
+	const modeButtonActive: React.CSSProperties = {
+		...modeButtonBase,
+		background: colors.primary,
+		color: colors.textOnPrimary,
+		border: `1px solid ${colors.primary}`,
+		boxShadow: colors.shadowGlow
 	};
 
 	if (!open) {
 		return (
-			<div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
-				<button onClick={() => setOpen(true)} style={toggleButtonStyle}>
+			<div style={{ display: "flex", flexDirection: "column", gap: spacing.md, width: "100%" }}>
+				<button 
+					onClick={() => setOpen(true)} 
+					style={toggleButtonStyle}
+					onMouseEnter={(e) => {
+						e.currentTarget.style.background = colors.bgButtonHover;
+						e.currentTarget.style.boxShadow = colors.shadowMedium;
+					}}
+					onMouseLeave={(e) => {
+						e.currentTarget.style.background = colors.bgButton;
+						e.currentTarget.style.boxShadow = colors.shadowSubtle;
+					}}
+				>
 					Elevation Mode
 				</button>
 				<div style={buttonRowStyle}>
@@ -163,6 +163,14 @@ export default function TerrainControls() {
 						style={enabled ? modeButtonBase : modeButtonActive}
 						onClick={() => setEnabled(false)}
 						aria-pressed={!enabled}
+						onMouseEnter={(e) => {
+							if (!enabled) return;
+							e.currentTarget.style.background = colors.bgButtonHover;
+						}}
+						onMouseLeave={(e) => {
+							if (!enabled) return;
+							e.currentTarget.style.background = colors.bgButton;
+						}}
 					>
 						2D
 					</button>
@@ -171,6 +179,20 @@ export default function TerrainControls() {
 						style={enabled ? modeButtonActive : modeButtonBase}
 						onClick={() => setEnabled(true)}
 						aria-pressed={enabled}
+						onMouseEnter={(e) => {
+							if (enabled) {
+								e.currentTarget.style.background = colors.primaryHover;
+							} else {
+								e.currentTarget.style.background = colors.bgButtonHover;
+							}
+						}}
+						onMouseLeave={(e) => {
+							if (enabled) {
+								e.currentTarget.style.background = colors.primary;
+							} else {
+								e.currentTarget.style.background = colors.bgButton;
+							}
+						}}
 					>
 						3D
 					</button>
@@ -182,14 +204,14 @@ export default function TerrainControls() {
 	return (
 		<div
 			style={{
-				padding: "12px 14px",
-				background: "rgba(255,255,255,0.94)",
-				border: "1px solid rgba(15, 23, 42, 0.12)",
-				borderRadius: 6,
-				boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
+				padding: `${spacing.lg} ${spacing.xl}`,
+				background: colors.bgPanel,
+				border: `1px solid ${colors.borderMedium}`,
+				borderRadius: borderRadius.md,
+				boxShadow: colors.shadowLarge,
 				display: "flex",
 				flexDirection: "column",
-				gap: 8,
+				gap: spacing.md,
 				width: "100%"
 			}}
 		>
@@ -198,15 +220,26 @@ export default function TerrainControls() {
 				style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
 				title="Click to collapse"
 			>
-				<strong style={{ fontSize: 13, color: "rgba(15,23,42,0.75)" }}>Elevation Mode</strong>
+				<strong style={{ fontSize: typography.fontSize.base, fontWeight: typography.fontWeight.semibold, color: colors.textPrimary }}>Elevation Mode</strong>
 				<button
 					onClick={() => setOpen(false)}
 					style={{
 						border: "none",
 						background: "transparent",
-						fontSize: 12,
-						color: "rgba(15,23,42,0.55)",
-						cursor: "pointer"
+						fontSize: typography.fontSize.sm,
+						color: colors.textMuted,
+						cursor: "pointer",
+						padding: spacing.xs,
+						borderRadius: borderRadius.sm,
+						transition: "all 0.2s ease"
+					}}
+					onMouseEnter={(e) => {
+						e.currentTarget.style.color = colors.textSecondary;
+						e.currentTarget.style.background = colors.bgButton;
+					}}
+					onMouseLeave={(e) => {
+						e.currentTarget.style.color = colors.textMuted;
+						e.currentTarget.style.background = "transparent";
 					}}
 				>
 					Hide
@@ -218,6 +251,14 @@ export default function TerrainControls() {
 					style={enabled ? modeButtonBase : modeButtonActive}
 					onClick={() => setEnabled(false)}
 					aria-pressed={!enabled}
+					onMouseEnter={(e) => {
+						if (!enabled) return;
+						e.currentTarget.style.background = colors.bgButtonHover;
+					}}
+					onMouseLeave={(e) => {
+						if (!enabled) return;
+						e.currentTarget.style.background = colors.bgButton;
+					}}
 				>
 					2D
 				</button>
@@ -226,11 +267,25 @@ export default function TerrainControls() {
 					style={enabled ? modeButtonActive : modeButtonBase}
 					onClick={() => setEnabled(true)}
 					aria-pressed={enabled}
+					onMouseEnter={(e) => {
+						if (enabled) {
+							e.currentTarget.style.background = colors.primaryHover;
+						} else {
+							e.currentTarget.style.background = colors.bgButtonHover;
+						}
+					}}
+					onMouseLeave={(e) => {
+						if (enabled) {
+							e.currentTarget.style.background = colors.primary;
+						} else {
+							e.currentTarget.style.background = colors.bgButton;
+						}
+					}}
 				>
 					3D
 				</button>
 			</div>
-			<label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+			<label style={{ display: "flex", flexDirection: "column", gap: spacing.sm }}>
 				<span style={sliderLabelStyle}>
 					<span>Elevation exaggeration</span>
 					<span>{roundedExaggeration.toFixed(1)}x</span>
@@ -242,12 +297,12 @@ export default function TerrainControls() {
 					step={0.1}
 					value={verticalExaggeration}
 					onChange={handleExaggerationChange}
-					style={sliderStyle}
+					style={{ width: "100%", accentColor: colors.primary }}
 					disabled={!enabled}
 				/>
 			</label>
-			<div style={{ display: "flex", flexDirection: "column", gap: 8, opacity: enabled ? 1 : 0.55 }}>
-				<label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+			<div style={{ display: "flex", flexDirection: "column", gap: spacing.md, opacity: enabled ? 1 : 0.55 }}>
+				<label style={{ display: "flex", flexDirection: "column", gap: spacing.sm }}>
 					<span style={sliderLabelStyle}>
 						<span>Heading</span>
 						<span>{heading.toFixed(0)}°</span>
@@ -265,7 +320,7 @@ export default function TerrainControls() {
 								emitCameraChange({ heading: value }, false);
 							}
 						}}
-						style={sliderStyle}
+						style={{ width: "100%", accentColor: colors.primary }}
 						disabled={!enabled}
 					/>
 				</label>
@@ -287,7 +342,7 @@ export default function TerrainControls() {
 								emitCameraChange({ pitch: value }, false);
 							}
 						}}
-						style={sliderStyle}
+						style={{ width: "100%", accentColor: colors.primary }}
 						disabled={!enabled}
 					/>
 				</label>
@@ -309,7 +364,7 @@ export default function TerrainControls() {
 								emitCameraChange({ height: value }, false);
 							}
 						}}
-						style={sliderStyle}
+						style={{ width: "100%", accentColor: colors.primary }}
 						disabled={!enabled}
 					/>
 				</label>
@@ -318,12 +373,12 @@ export default function TerrainControls() {
 				Toggle 3D to tilt the map like onX. Use the slider to exaggerate hills and valleys for easier terrain reading.
 			</div>
 			{!ionToken && !terrainUrl && !terrariumUrl ? (
-				<div style={{ ...helperTextStyle, color: "rgba(220, 38, 38, 0.78)" }}>
+				<div style={{ ...helperTextStyle, color: colors.error }}>
 					Optional: set `VITE_CESIUM_ION_TOKEN` or `VITE_CESIUM_TERRAIN_URL` to stream high-resolution terrain tiles.
 				</div>
 			) : null}
 			{!ionToken && !terrainUrl && terrariumUrl ? (
-				<div style={{ ...helperTextStyle, color: "rgba(34, 197, 94, 0.9)" }}>
+				<div style={{ ...helperTextStyle, color: colors.success }}>
 					Using global AWS Terrarium elevation tiles for realistic hills without a Cesium Ion token.
 				</div>
 			) : null}
