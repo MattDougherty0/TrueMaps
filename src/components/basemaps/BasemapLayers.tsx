@@ -18,7 +18,7 @@ const REMOTE_SOURCES = {
 
 export default function BasemapLayers() {
 	const map = useMapInstance();
-	const { projectPath } = useAppStore();
+	const { projectPath, activePropertyId } = useAppStore();
 	const topoRef = useRef<TileLayer<XYZ> | null>(null);
 	const aerialRef = useRef<TileLayer<XYZ> | null>(null);
 	const hillshadeRef = useRef<TileLayer<XYZ> | null>(null);
@@ -52,7 +52,7 @@ export default function BasemapLayers() {
 		const hillshade =
 			projectPath
 				? (() => {
-						const source = new XYZ({ url: mbtilesUrl("hillshade") });
+						const source = new XYZ({ url: mbtilesUrl("hillshade", activePropertyId) });
 						source.set("olcs_skip", true);
 						const layer = new TileLayer({
 							source,
@@ -65,7 +65,7 @@ export default function BasemapLayers() {
 		const slope =
 			projectPath
 				? (() => {
-						const source = new XYZ({ url: mbtilesUrl("slope") });
+						const source = new XYZ({ url: mbtilesUrl("slope", activePropertyId) });
 						source.set("olcs_skip", true);
 						const layer = new TileLayer({
 							source,
@@ -185,7 +185,7 @@ export default function BasemapLayers() {
 			historicalTileRef.current = null;
 			historicalImageRef.current = null;
 		};
-	}, [map, projectPath]);
+	}, [map, projectPath, activePropertyId]);
 
 	return null;
 }

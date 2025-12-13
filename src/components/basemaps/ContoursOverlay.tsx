@@ -16,7 +16,7 @@ const contourStyle = new Style({
 
 export default function ContoursOverlay() {
 	const map = useMapInstance();
-	const { projectPath } = useAppStore();
+	const { projectPath, activePropertyId } = useAppStore();
 	const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
 
 	useEffect(() => {
@@ -34,7 +34,17 @@ export default function ContoursOverlay() {
 
 		const loadContours = async () => {
 			try {
-				const text = await window.api.readTextFile(projectPath, "tiles/contours.geojson");
+				let text = "";
+				if (activePropertyId) {
+					try {
+						text = await window.api.readTextFile(projectPath, `tiles/contours_${activePropertyId}.geojson`);
+					} catch {
+						// fallback below
+					}
+				}
+				if (!text) {
+					text = await window.api.readTextFile(projectPath, "tiles/contours.geojson");
+				}
 				if (!text || cancelled) return;
 				const features = new GeoJSON().readFeatures(text, {
 					dataProjection: "EPSG:4326",
@@ -61,7 +71,7 @@ export default function ContoursOverlay() {
 				layerRef.current = null;
 			}
 		};
-	}, [map, projectPath]);
+	}, [map, projectPath, activePropertyId]);
 
 	return null;
 }
