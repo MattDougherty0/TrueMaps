@@ -6,7 +6,6 @@ import View from "ol/View";
 import { defaults as defaultControls, ScaleLine, FullScreen } from "ol/control";
 import { fromLonLat, toLonLat, transform } from "ol/proj";
 import OLCesium from "olcs/OLCesium";
-import { RasterSynchronizer, VectorSynchronizer, OverlaySynchronizer } from "olcs";
 import * as CesiumGlobal from "cesium";
 import {
 	Ion,
@@ -381,20 +380,16 @@ export default function MapView() {
 		let unsubscribeBasemap: (() => void) | null = null;
 		let removeTileProgressListener: (() => void) | null = null;
 		try {
-			olCesium = new OLCesium({
-				map,
-				target: mapRef.current,
-				// Capture synchronizers so we can rebuild vectors when enabling 3D.
-				createSynchronizers: (m: any, scene: any, dataSources: any) => {
-					const raster = new (RasterSynchronizer as any)(m, scene);
-					const vector = new (VectorSynchronizer as any)(m, scene);
-					const overlay = new (OverlaySynchronizer as any)(m, scene);
-					vectorSync = vector;
-					// Note: we still use raster/overlay synchronizers; raster layers with `olcs_skip`
-					// are ignored (we manage Cesium basemaps ourselves).
-					return [raster, vector, overlay];
-				}
-			});
+			olCesium = new OLCesium({ map, target: mapRef.current });
+			// Grab OL-Cesium's internal VectorSynchronizer (best-effort; avoids extra imports/types).
+			try {
+				const syncs: any[] = ((olCesium as any).synchronizers_ as any[]) || [];
+				vectorSync =
+					syncs.find((s) => (s?.constructor?.name || "").toLowerCase().includes("vectorsynchronizer")) ||
+					null;
+			} catch {
+				vectorSync = null;
+			}
 			const scene = olCesium.getCesiumScene();
 			scene.screenSpaceCameraController.enableTilt = true;
 			scene.screenSpaceCameraController.minimumZoomDistance = 50;
@@ -554,6 +549,19 @@ export default function MapView() {
 					});
 				} else {
 					clearCesiumBasemaps();
+					// Safety: OL-Cesium hides the OL root layer group when 3D is enabled.
+					// If that restore ever fails, all layers look "gone" even in 2D.
+					try {
+						map.getLayerGroup().setVisible(true);
+					} catch {
+						// ignore
+					}
+					// Nudge a render to ensure layers repaint immediately.
+					try {
+						map.render();
+					} catch {
+						// ignore
+					}
 				}
 			}
 			if (state.verticalExaggeration !== previous.verticalExaggeration) {
