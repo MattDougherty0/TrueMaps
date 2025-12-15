@@ -158,6 +158,15 @@ export const webAPI: PlatformAPI = {
 		return false;
 	},
 
+	async listMediaFolder(): Promise<string[]> {
+		// Not supported in web mode yet.
+		return [];
+	},
+
+	async importMediaFolder(): Promise<{ folder: string; files: string[] }> {
+		throw new Error("importMediaFolder not supported in web mode");
+	},
+
 	async projectCreateStructure(baseDir: string, projectName: string): Promise<boolean> {
 		const emptyFC = JSON.stringify({ type: "FeatureCollection", features: [] }, null, 2);
 		const dataFiles = [

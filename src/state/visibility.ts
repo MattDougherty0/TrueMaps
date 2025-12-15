@@ -25,7 +25,8 @@ const terrainLayers: LayerId[] = [
 	"open_woods",
 	"acorn_flats",
 	"trails",
-	"waypoints"
+	"waypoints",
+	"trail_cameras"
 ];
 
 const signLayers: LayerId[] = [
@@ -39,7 +40,7 @@ const signLayers: LayerId[] = [
 	"waypoints"
 ];
 
-const huntLayers: LayerId[] = ["hunts", "harvests", "animal_sightings", "animal_paths", "stands"];
+const huntLayers: LayerId[] = ["hunts", "harvests", "animal_sightings", "animal_paths", "stands", "trail_cameras"];
 
 export const useVisibilityStore = create<VisibilityState>((set, get) => ({
 	preset: "everything",

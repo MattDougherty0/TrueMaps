@@ -18,6 +18,7 @@ export type LayerId =
 	| "beds_points"
 	| "cover_points"
 	| "waypoints"
+	| "trail_cameras"
 	| "open_woods"
 	| "acorn_flats"
 	| "mast_check_points"
@@ -545,6 +546,20 @@ export const layerSchemas: Record<LayerId, JsonSchema> = {
 			notes: { type: "string", title: "Notes" }
 		},
 		required: []
+	},
+	trail_cameras: {
+		type: "object",
+		properties: {
+			name: { type: "string", title: "Camera Name" },
+			camera_type: { type: "string", enum: ["trail", "cell"], enumNames: ["Trail Cam", "Cell Cam"], title: "Type" },
+			media_folder: {
+				type: "string",
+				title: "Media Folder (project-relative, e.g. media/trail_cameras/cam_01)"
+			},
+			last_checked: dateSchema,
+			notes: { type: "string", title: "Notes" }
+		},
+		required: ["name"]
 	}
 };
 

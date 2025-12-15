@@ -155,6 +155,15 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		icon: "📍",
 		legendFill: "#ef4444"
 	},
+	trail_cameras: {
+		file: "trail_cameras.geojson",
+		geometry: "Point",
+		style: pointVector("#7c3aed", "#fff", 8, 4),
+		addable: true,
+		label: "Trail Cameras",
+		icon: "📷",
+		legendFill: "#7c3aed"
+	},
 	acorn_flats: {
 		file: "acorn_flats.geojson",
 		geometry: "Polygon",
@@ -309,6 +318,7 @@ export const layerOrder: LayerId[] = [
 	"tree_stands",
 	"open_woods",
 	"waypoints",
+	"trail_cameras",
 	"cover_points",
 	"acorn_flats",
 	"bedding_areas",

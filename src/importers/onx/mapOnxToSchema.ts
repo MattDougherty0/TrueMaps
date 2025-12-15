@@ -101,6 +101,11 @@ export function mapOnxToSchema(parsed: ParsedFeature, opts: ImportOptions): Mapp
 			category: iconHint || (parsed.name || ""),
 			onx_icon: iconHint || undefined,
 			onx_color: colorHint || undefined
+		}),
+		trail_cameras: withProps("trail_cameras", {
+			camera_type: name.includes("cell") ? "cell" : "trail",
+			onx_icon: iconHint || undefined,
+			onx_color: colorHint || undefined
 		})
 	};
 
@@ -111,8 +116,6 @@ export function mapOnxToSchema(parsed: ParsedFeature, opts: ImportOptions): Mapp
 		switch (p) {
 			case "stand":
 				return geomType === "Polygon" ? "tree_stands" : "stands";
-			case "spot":
-				return "stands";
 			case "spot":
 				return "stands";
 			case "scrape":
@@ -155,6 +158,15 @@ export function mapOnxToSchema(parsed: ParsedFeature, opts: ImportOptions): Mapp
 	} else if (!opts.useHeuristics) {
 		return null;
 	} else {
+		// Trail camera name heuristics (onX often exports these as generic "Location" icons)
+		if (!layer && geomType === "Point") {
+			const camRe =
+				/\b(trail\s*cam(era)?|trailcam|cell\s*cam(era)?|cellcam|camera|cam)\b/i;
+			if (camRe.test(parsed.name || "") || camRe.test(name) || iconHint.includes("camera") || iconHint.includes("trail cam")) {
+				layer = "trail_cameras";
+			}
+		}
+
 		// onX exports often don't use prefixes; use icon hints for Point Placemarks.
 		if (!layer && geomType === "Point" && iconHint) {
 			if (iconHint.includes("ladder stand") || iconHint.includes("treestand") || iconHint.includes("tree stand") || iconHint === "stand") {

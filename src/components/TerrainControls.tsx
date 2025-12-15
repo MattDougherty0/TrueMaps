@@ -3,20 +3,20 @@ import { useTerrainPreferences } from "../state/terrain";
 import { useCameraPreferences } from "../state/camera";
 import { colors, borderRadius, spacing, typography } from "../lib/theme";
 
-	const buttonRowStyle: React.CSSProperties = {
-		display: "flex",
+const buttonRowStyle: React.CSSProperties = {
+	display: "flex",
 		gap: spacing.sm
 	};
 
 	// Define slider and helper styles using theme
-	const sliderStyle: React.CSSProperties = {
+const sliderStyle: React.CSSProperties = {
 		width: "100%",
 		accentColor: colors.primary
-	};
+};
 
-	const sliderLabelStyle: React.CSSProperties = {
-		display: "flex",
-		justifyContent: "space-between",
+const sliderLabelStyle: React.CSSProperties = {
+	display: "flex",
+	justifyContent: "space-between",
 		fontSize: typography.fontSize.sm,
 		color: colors.textPrimary,
 		fontWeight: typography.fontWeight.medium
@@ -26,27 +26,27 @@ import { colors, borderRadius, spacing, typography } from "../lib/theme";
 		fontSize: typography.fontSize.xs,
 		color: colors.textMuted,
 		lineHeight: typography.lineHeight.normal
-	};
+};
 
 export default function TerrainControls() {
 	const [open, setOpen] = useState(false);
-	const {
-		enabled,
-		verticalExaggeration,
-		setEnabled,
-		setVerticalExaggeration,
-		ionToken,
-		terrainUrl,
-		terrariumUrl
-	} = useTerrainPreferences((state) => ({
-		enabled: state.enabled,
-		verticalExaggeration: state.verticalExaggeration,
-		setEnabled: state.setEnabled,
-		setVerticalExaggeration: state.setVerticalExaggeration,
-		ionToken: state.ionToken,
-		terrainUrl: state.terrainUrl,
-		terrariumUrl: state.terrariumUrl
-	}));
+           const {
+               enabled,
+               verticalExaggeration,
+               setEnabled,
+               setVerticalExaggeration,
+               ionToken,
+               terrainUrl,
+               terrariumUrl
+           } = useTerrainPreferences((state) => ({
+               enabled: state.enabled,
+               verticalExaggeration: state.verticalExaggeration,
+               setEnabled: state.setEnabled,
+               setVerticalExaggeration: state.setVerticalExaggeration,
+               ionToken: state.ionToken,
+               terrainUrl: state.terrainUrl,
+               terrariumUrl: state.terrariumUrl
+           }));
 
            useEffect(() => {
                // Ensure projects always open in 2D unless the user explicitly enables 3D.

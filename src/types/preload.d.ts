@@ -19,6 +19,12 @@ declare global {
 			copyToMedia: (baseDir: string, sourceAbsolutePath: string, targetFolderPath?: string) => Promise<string>;
 			resolveMediaPath: (baseDir: string, relativePath: string) => Promise<string>;
 			deleteFile: (absolutePath: string) => Promise<boolean>;
+			listMediaFolder: (baseDir: string, relativeFolderPath: string) => Promise<string[]>;
+			importMediaFolder: (
+				baseDir: string,
+				sourceDirAbsolutePath: string,
+				targetFolderPath: string
+			) => Promise<{ folder: string; files: string[] }>;
 			projectCreateStructure: (baseDir: string, projectName: string) => Promise<boolean>;
 			chooseFile: (filters?: { name: string; extensions: string[] }[]) => Promise<string | null>;
 			chooseFiles: (filters?: { name: string; extensions: string[] }[]) => Promise<string[]>;
@@ -38,6 +44,7 @@ declare global {
 				}
 			) => Promise<string>;
 			exportGeoPackage: (baseDir: string) => Promise<string | null>;
+			openPath?: (absolutePath: string) => Promise<boolean>;
 		};
 	}
 }

@@ -1,16 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSelectionStore } from "../state/selection";
 import { layerConfigById } from "../lib/geo/layerConfig";
 import type { LayerId } from "../lib/geo/schema";
 import FeatureForm from "./FeatureForm";
 import { useMapInstance } from "../state/map";
 import { toLonLat } from "ol/proj";
+import useAppStore from "../state/store";
 
 export default function FeatureDetailsPanel() {
 	const selected = useSelectionStore((s) => s.selected);
 	const map = useMapInstance();
+	const { projectPath } = useAppStore();
 	const [editing, setEditing] = useState(false);
 	const [quickNote, setQuickNote] = useState("");
+	const [cameraFiles, setCameraFiles] = useState<string[] | null>(null);
+	const [cameraPreviews, setCameraPreviews] = useState<Record<string, string>>({});
 
 	// Derive stable deps so hooks count/order never changes between renders
 	const layerId = (selected?.layerId as LayerId | undefined) || undefined;
@@ -18,6 +22,7 @@ export default function FeatureDetailsPanel() {
 	const cfg = useMemo(() => (layerId ? layerConfigById[layerId] : null), [layerId]);
 	const props = feature?.getProperties?.() || {};
 	const featureName = typeof props.name === "string" && props.name.trim().length > 0 ? props.name.trim() : null;
+	const mediaFolder = typeof props.media_folder === "string" ? props.media_folder.trim() : "";
 
 	const canUseGenericPersist = true; // for layers managed by GenericLayer
 	const canDelete =
@@ -95,6 +100,44 @@ export default function FeatureDetailsPanel() {
 		return copy;
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [feature]);
+
+	// Trail camera media: list + preview
+	useEffect(() => {
+		let cancelled = false;
+		const isCamera = layerId === "trail_cameras";
+		if (!isCamera || !projectPath || !mediaFolder || typeof window.api.listMediaFolder !== "function") {
+			setCameraFiles(null);
+			setCameraPreviews({});
+			return () => {
+				cancelled = true;
+			};
+		}
+		(async () => {
+			try {
+				const files = await window.api.listMediaFolder(projectPath, mediaFolder);
+				if (cancelled) return;
+				setCameraFiles(files);
+				const previews: Record<string, string> = {};
+				for (const rel of files) {
+					try {
+						const abs = await window.api.resolveMediaPath(projectPath, rel);
+						previews[rel] = `file://${encodeURI(abs.replace(/\\/g, "/"))}`;
+					} catch {
+						previews[rel] = "";
+					}
+				}
+				if (!cancelled) setCameraPreviews(previews);
+			} catch {
+				if (!cancelled) {
+					setCameraFiles([]);
+					setCameraPreviews({});
+				}
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [layerId, projectPath, mediaFolder]);
 
 	if (!selected || !cfg || !layerId) return null;
 
@@ -198,6 +241,86 @@ export default function FeatureDetailsPanel() {
 							));
 						})()}
 					</div>
+					{layerId === "trail_cameras" ? (
+						<div style={{ marginTop: 10, borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 10 }}>
+							<div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6 }}>Camera Media</div>
+							<div style={{ fontSize: 12, color: "rgba(0,0,0,0.65)", marginBottom: 8 }}>
+								Folder: <code>{mediaFolder || "— (not linked yet)"}</code>
+							</div>
+							<div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+								<button
+									onClick={async () => {
+										if (!projectPath) return;
+										if (typeof window.api.importMediaFolder !== "function") {
+											window.alert("Media folder import is not available in this build.");
+											return;
+										}
+										const sourceDir = await window.api.chooseDirectory();
+										if (!sourceDir) return;
+										const baseName = (featureName || "camera").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+										const target = `media/trail_cameras/${baseName || "camera"}`;
+										const res = await window.api.importMediaFolder(projectPath, sourceDir, target);
+										feature.set("media_folder", res.folder);
+										window.dispatchEvent(new Event(`layer:persist:${layerId}`));
+									}}
+									style={{ fontSize: 12, padding: "6px 10px", cursor: "pointer" }}
+								>
+									Link folder…
+								</button>
+								{mediaFolder && typeof window.api.openPath === "function" ? (
+									<button
+										onClick={async () => {
+											if (!projectPath) return;
+											try {
+												const abs = await window.api.resolveMediaPath(projectPath, mediaFolder);
+												await window.api.openPath!(abs);
+											} catch {
+												// ignore
+											}
+										}}
+										style={{ fontSize: 12, padding: "6px 10px", cursor: "pointer" }}
+									>
+										Open folder
+									</button>
+								) : null}
+							</div>
+							{cameraFiles ? (
+								cameraFiles.length ? (
+									<div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+										{cameraFiles.slice(0, 36).map((rel) => (
+											<div
+												key={rel}
+												style={{
+													width: 96,
+													height: 72,
+													borderRadius: 6,
+													overflow: "hidden",
+													border: "1px solid rgba(0,0,0,0.1)",
+													background: "#f3f3f3",
+													cursor: cameraPreviews[rel] ? "pointer" : "default"
+												}}
+												onClick={() => {
+													const url = cameraPreviews[rel];
+													if (url) window.open(url, "_blank");
+												}}
+												title={rel}
+											>
+												{cameraPreviews[rel] ? (
+													<img src={cameraPreviews[rel]} alt={rel} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+												) : (
+													<div style={{ fontSize: 10, padding: 6 }}>{rel.split("/").pop()}</div>
+												)}
+											</div>
+										))}
+									</div>
+								) : (
+									<div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)" }}>No media found in this folder.</div>
+								)
+							) : (
+								<div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)" }}>Link a folder to see images here.</div>
+							)}
+						</div>
+					) : null}
 					<div style={{ display: "flex", gap: 6, marginTop: 8 }}>
 						<input
 							type="text"

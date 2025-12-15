@@ -28,6 +28,14 @@ contextBridge.exposeInMainWorld("api", {
 		ipcRenderer.invoke("media:resolvePath", baseDir, relativePath),
 	deleteFile: (absolutePath: string): Promise<boolean> =>
 		ipcRenderer.invoke("media:deleteFile", absolutePath),
+	listMediaFolder: (baseDir: string, relativeFolderPath: string): Promise<string[]> =>
+		ipcRenderer.invoke("media:listFolder", baseDir, relativeFolderPath),
+	importMediaFolder: (
+		baseDir: string,
+		sourceDirAbsolutePath: string,
+		targetFolderPath: string
+	): Promise<{ folder: string; files: string[] }> =>
+		ipcRenderer.invoke("media:importFolder", baseDir, sourceDirAbsolutePath, targetFolderPath),
 	projectCreateStructure: (baseDir: string, projectName: string): Promise<boolean> =>
 		ipcRenderer.invoke("project:createStructure", baseDir, projectName),
 	chooseFile: (filters?: { name: string; extensions: string[] }[]): Promise<string | null> =>

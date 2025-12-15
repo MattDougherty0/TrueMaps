@@ -23,6 +23,7 @@ const categoryLookup: Record<LayerId, CategoryKey> = {
 	trails: "terrain",
 	waypoints: "terrain",
 	tree_stands: "stands",
+	trail_cameras: "stands",
 	open_woods: "habitat",
 	cover_points: "habitat",
 	acorn_flats: "habitat",

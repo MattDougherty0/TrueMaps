@@ -34,23 +34,23 @@ import { colors, borderRadius, spacing, typography } from "../lib/theme";
 function Landing() {
 	const { createNewProject, openExistingProject, loading } = useAppStore();
 	return (
-		<div
-			style={{
-				display: "grid",
-				placeItems: "center",
-				height: "100vh",
-				gap: 16,
-				fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
-			}}
-		>
-			<h1>True Map</h1>
-			<div style={{ display: "flex", gap: 12 }}>
+			<div
+				style={{
+					display: "grid",
+					placeItems: "center",
+					height: "100vh",
+					gap: 16,
+					fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+				}}
+			>
+				<h1>True Map</h1>
+				<div style={{ display: "flex", gap: 12 }}>
 				<button onClick={() => void createNewProject()} disabled={loading}>
 					Create New Project
-				</button>
+					</button>
 				<button onClick={() => void openExistingProject()} disabled={loading}>
-					Open Existing Project
-				</button>
+						Open Existing Project
+					</button>
 			</div>
 		</div>
 	);

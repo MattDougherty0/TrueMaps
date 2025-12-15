@@ -15,6 +15,12 @@ export interface PlatformAPI {
 	copyToMedia(baseDir: string, sourceAbsolutePath: string, targetFolderPath?: string): Promise<string>;
 	resolveMediaPath(baseDir: string, relativePath: string): Promise<string>;
 	deleteFile(absolutePath: string): Promise<boolean>;
+	listMediaFolder?(baseDir: string, relativeFolderPath: string): Promise<string[]>;
+	importMediaFolder?(
+		baseDir: string,
+		sourceDirAbsolutePath: string,
+		targetFolderPath: string
+	): Promise<{ folder: string; files: string[] }>;
 	projectCreateStructure(baseDir: string, projectName: string): Promise<boolean>;
 	setActiveProject(baseDir: string): void;
 	printPdf?(baseDir: string, payload: any): Promise<string | null>;

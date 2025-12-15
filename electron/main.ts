@@ -413,6 +413,91 @@ app.whenReady().then(() => {
 	});
 
 	ipcMain.handle(
+		"media:listFolder",
+		async (_event, baseDir: string, relativeFolderPath: string): Promise<string[]> => {
+			// relativeFolderPath is project-relative, e.g. "media/trail_cameras/cam_01"
+			const mediaDir = path.resolve(baseDir, "media");
+			const target = resolveInsideBase(baseDir, relativeFolderPath);
+			const resolved = path.resolve(target);
+			if (!resolved.startsWith(mediaDir)) {
+				throw new Error("Folder must be inside project media/");
+			}
+			const allowed = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".mp4", ".mov"]);
+			const out: Array<{ rel: string; mtime: number }> = [];
+			const walk = async (dirAbs: string) => {
+				const entries = await fs.readdir(dirAbs, { withFileTypes: true } as any);
+				for (const ent of entries as any[]) {
+					const fp = path.join(dirAbs, ent.name);
+					if (ent.isDirectory()) {
+						await walk(fp);
+						continue;
+					}
+					const ext = path.extname(ent.name).toLowerCase();
+					if (!allowed.has(ext)) continue;
+					try {
+						const st = await fs.stat(fp);
+						const rel = path.relative(baseDir, fp).split(path.sep).join("/");
+						out.push({ rel, mtime: st.mtimeMs || 0 });
+					} catch {
+						// ignore
+					}
+				}
+			};
+			await walk(resolved);
+			out.sort((a, b) => b.mtime - a.mtime);
+			return out.slice(0, 500).map((e) => e.rel);
+		}
+	);
+
+	ipcMain.handle(
+		"media:importFolder",
+		async (
+			_event,
+			baseDir: string,
+			sourceDirAbsolutePath: string,
+			targetFolderPath: string
+		): Promise<{ folder: string; files: string[] }> => {
+			// targetFolderPath is project-relative, e.g. "media/trail_cameras/cam_01"
+			const mediaDir = path.resolve(baseDir, "media");
+			const targetAbs = resolveInsideBase(baseDir, targetFolderPath);
+			if (!path.resolve(targetAbs).startsWith(mediaDir)) {
+				throw new Error("Target must be inside project media/");
+			}
+			await fs.mkdir(targetAbs, { recursive: true });
+			const allowed = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".mp4", ".mov", ".avi"]);
+			const copied: string[] = [];
+			const walk = async (dirAbs: string) => {
+				const entries = await fs.readdir(dirAbs, { withFileTypes: true } as any);
+				for (const ent of entries as any[]) {
+					const fp = path.join(dirAbs, ent.name);
+					if (ent.isDirectory()) {
+						await walk(fp);
+						continue;
+					}
+					const ext = path.extname(ent.name).toLowerCase();
+					if (!allowed.has(ext)) continue;
+					const destAbs = path.join(targetAbs, ent.name);
+					try {
+						if (ext === ".avi") {
+							const { name } = path.parse(ent.name);
+							const mp4Dest = path.join(targetAbs, `${name}.mp4`);
+							await convertVideoToMP4(fp, mp4Dest);
+							copied.push(path.relative(baseDir, mp4Dest).split(path.sep).join("/"));
+						} else {
+							await fs.copyFile(fp, destAbs);
+							copied.push(path.relative(baseDir, destAbs).split(path.sep).join("/"));
+						}
+					} catch (err) {
+						console.warn("[media:importFolder] Failed to import", fp, err);
+					}
+				}
+			};
+			await walk(path.resolve(sourceDirAbsolutePath));
+			return { folder: targetFolderPath, files: copied };
+		}
+	);
+
+	ipcMain.handle(
 		"project:createStructure",
 		async (_event, baseDir: string, projectName: string) => {
 			const dirs = ["data", "tiles", "media", "exports"];
@@ -429,6 +514,8 @@ app.whenReady().then(() => {
 				"beds_points.geojson",
 				"open_woods.geojson",
 				"cover_points.geojson",
+				"waypoints.geojson",
+				"trail_cameras.geojson",
 				"acorn_flats.geojson",
 				"mast_check_points.geojson",
 				"big_rocks.geojson",
