@@ -15,6 +15,7 @@ import FeatureForm from "../FeatureForm";
 import { useUserStore } from "../../state/user";
 import { shouldShowFeature, getAgeOpacity } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
+import { emptyFeatureCollectionString, propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
 
 const trailStyle = (feature?: FeatureLike) => {
 	const type = feature?.get?.("trail_type") as string | undefined;
@@ -48,7 +49,7 @@ const trailStyle = (feature?: FeatureLike) => {
 };
 
 export default function TrailLayer() {
-	const { projectPath } = useAppStore();
+	const { projectPath, activePropertyId } = useAppStore();
 	const map = useMapInstance();
 	const sourceRef = useRef<VectorSource>(new VectorSource());
 	const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -63,11 +64,12 @@ export default function TrailLayer() {
 
 	useEffect(() => {
 		if (!map || !projectPath) return;
+		const dataPath = propertyScopedGeoJSONPath("data/trails.geojson", activePropertyId);
 
 		// Layer setup
 		const layer = new VectorLayer({
 			source: sourceRef.current,
-			style: (feat: FeatureLike) => (shouldShowFeature("trails", feat) ? trailStyle(feat) : null)
+			style: (feat: FeatureLike) => (shouldShowFeature("trails", feat) ? trailStyle(feat) : undefined)
 		});
 		layerRef.current = layer;
 		map.addLayer(layer);
@@ -78,13 +80,13 @@ export default function TrailLayer() {
 				dataProjection: "EPSG:4326",
 				featureProjection: "EPSG:3857"
 			});
-			await window.api.writeTextFile(projectPath, "data/trails.geojson", JSON.stringify(gj, null, 2));
+			await window.api.writeTextFile(projectPath, dataPath, JSON.stringify(gj, null, 2));
 		};
 		persistRef.current = persist;
 
 		const reload = async () => {
 			try {
-				const text = await window.api.readTextFile(projectPath, "data/trails.geojson");
+				const text = await window.api.readTextFile(projectPath, dataPath);
 				const geojson = JSON.parse(text || "{\"type\":\"FeatureCollection\",\"features\":[]}");
 				const feats = new GeoJSON().readFeatures(geojson, {
 					dataProjection: "EPSG:4326",
@@ -104,7 +106,11 @@ export default function TrailLayer() {
 					await persist();
 				}
 			} catch {
-				// ignore
+				try {
+					await window.api.writeTextFile(projectPath, dataPath, emptyFeatureCollectionString());
+				} catch {
+					// ignore
+				}
 			}
 		};
 		void reload();
@@ -216,7 +222,7 @@ export default function TrailLayer() {
 			layerRef.current = null;
 			persistRef.current = async () => {};
 		};
-	}, [map, projectPath]);
+	}, [map, projectPath, activePropertyId]);
 
 	// Visibility binding
 	useEffect(() => {

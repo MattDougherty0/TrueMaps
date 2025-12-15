@@ -1,12 +1,15 @@
 import type { MappedFeature } from "./types";
+import { propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
 
 export async function isDuplicate(
 	projectDir: string,
 	layerFile: string,
-	mapped: MappedFeature
+	mapped: MappedFeature,
+	activePropertyId?: string | null
 ): Promise<boolean> {
+	const effectiveFile = propertyScopedGeoJSONPath(layerFile, activePropertyId);
 	try {
-		const text = await window.api.readTextFile(projectDir, `data/${layerFile}`);
+		const text = await window.api.readTextFile(projectDir, `data/${effectiveFile}`);
 		const fc = JSON.parse(text || "{\"type\":\"FeatureCollection\",\"features\":[]}");
 		for (const f of fc.features || []) {
 			const existingSig = signatureOfExisting(f);

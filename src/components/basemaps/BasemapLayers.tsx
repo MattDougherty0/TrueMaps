@@ -56,7 +56,8 @@ export default function BasemapLayers() {
 						source.set("olcs_skip", true);
 						const layer = new TileLayer({
 							source,
-							zIndex: 1
+							zIndex: 1,
+							opacity: 0.55
 						});
 						layer.set("basemapKey", "hillshade");
 						return layer;
@@ -69,7 +70,8 @@ export default function BasemapLayers() {
 						source.set("olcs_skip", true);
 						const layer = new TileLayer({
 							source,
-							zIndex: 1
+							zIndex: 1,
+							opacity: 0.45
 						});
 						layer.set("basemapKey", "slope");
 						return layer;

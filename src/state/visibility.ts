@@ -24,7 +24,8 @@ const terrainLayers: LayerId[] = [
 	"bedding_areas",
 	"open_woods",
 	"acorn_flats",
-	"trails"
+	"trails",
+	"waypoints"
 ];
 
 const signLayers: LayerId[] = [
@@ -34,7 +35,8 @@ const signLayers: LayerId[] = [
 	"mast_check_points",
 	"beds_points",
 	"bedding_areas",
-	"trails"
+	"trails",
+	"waypoints"
 ];
 
 const huntLayers: LayerId[] = ["hunts", "harvests", "animal_sightings", "animal_paths", "stands"];

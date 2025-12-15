@@ -17,6 +17,7 @@ import { useUserStore } from "../../state/user";
 import { shouldShowFeature, getAgeOpacity } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
 import { useVisibilityStore } from "../../state/visibility";
+import { emptyFeatureCollectionString, propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
 
 const makeHuntStyle = (opacity: number) =>
 	new Style({
@@ -28,7 +29,7 @@ const makeHuntStyle = (opacity: number) =>
 	});
 
 export default function HuntsLayer() {
-	const { projectPath } = useAppStore();
+	const { projectPath, activePropertyId } = useAppStore();
 	const map = useMapInstance();
 	const sourceRef = useRef<VectorSource>(new VectorSource());
 	const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -45,6 +46,7 @@ export default function HuntsLayer() {
 
 	useEffect(() => {
 		if (!map || !projectPath) return;
+		const dataPath = propertyScopedGeoJSONPath("data/hunts.geojson", activePropertyId);
 
 		const layer = new VectorLayer({
 			source: sourceRef.current,
@@ -60,7 +62,7 @@ export default function HuntsLayer() {
 		// Load existing
 		const reload = async () => {
 			try {
-				const text = await window.api.readTextFile(projectPath, "data/hunts.geojson");
+				const text = await window.api.readTextFile(projectPath, dataPath);
 				const geojson = JSON.parse(text || "{\"type\":\"FeatureCollection\",\"features\":[]}");
 				const feats = new GeoJSON().readFeatures(geojson, {
 					dataProjection: "EPSG:4326",
@@ -69,7 +71,11 @@ export default function HuntsLayer() {
 				sourceRef.current.clear();
 				sourceRef.current.addFeatures(feats as any);
 			} catch {
-				// ignore
+				try {
+					await window.api.writeTextFile(projectPath, dataPath, emptyFeatureCollectionString());
+				} catch {
+					// ignore
+				}
 			}
 		};
 		void reload();
@@ -81,7 +87,7 @@ export default function HuntsLayer() {
 				dataProjection: "EPSG:4326",
 				featureProjection: "EPSG:3857"
 			});
-			await window.api.writeTextFile(projectPath, "data/hunts.geojson", JSON.stringify(gj, null, 2));
+			await window.api.writeTextFile(projectPath, dataPath, JSON.stringify(gj, null, 2));
 		};
 		persistRef.current = persist;
 
@@ -222,10 +228,11 @@ export default function HuntsLayer() {
 			modifyRef.current = null;
 			layerRef.current = null;
 		};
-	}, [map, projectPath]);
+	}, [map, projectPath, activePropertyId]);
 
 	const onSubmit = async (values: Record<string, unknown>) => {
 		if (!projectPath || !pendingProps) return;
+		const dataPath = propertyScopedGeoJSONPath("data/hunts.geojson", activePropertyId);
 		const { feature } = pendingProps;
 		const activeUser = useUserStore.getState().activeUser;
 		if (!activeUser) {
@@ -243,18 +250,18 @@ export default function HuntsLayer() {
 		});
 		// Append to existing file
 		try {
-			const existing = await window.api.readTextFile(projectPath, "data/hunts.geojson");
+			const existing = await window.api.readTextFile(projectPath, dataPath);
 			const parsed = JSON.parse(existing || "{\"type\":\"FeatureCollection\",\"features\":[]}");
 			parsed.features.push(gj.features[0]);
 			await window.api.writeTextFile(
 				projectPath,
-				"data/hunts.geojson",
+				dataPath,
 				JSON.stringify(parsed, null, 2)
 			);
 		} catch {
 			await window.api.writeTextFile(
 				projectPath,
-				"data/hunts.geojson",
+				dataPath,
 				JSON.stringify(gj, null, 2)
 			);
 		}

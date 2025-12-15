@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { useBasemapStore } from "../../state/basemaps";
 import { useHistoricalImagery } from "../../state/historical";
 import { colors, borderRadius, spacing, typography } from "../../lib/theme";
+import { useTerrainPreferences } from "../../state/terrain";
 
 export default function BasemapToggles() {
 	const [open, setOpen] = useState(false);
@@ -14,6 +15,36 @@ export default function BasemapToggles() {
 	const selectedId = useHistoricalImagery((s) => s.selectedId);
 	const setSelected = useHistoricalImagery((s) => s.setSelected);
 	const addEntry = useHistoricalImagery((s) => s.addEntry);
+	const is3D = useTerrainPreferences((s) => s.enabled);
+
+	const baseMode: "topo" | "aerial" | "historical" = histEnabled
+		? "historical"
+		: visible.aerial
+			? "aerial"
+			: "topo";
+
+	const setBaseMode = (mode: "topo" | "aerial" | "historical") => {
+		if (mode === "topo") {
+			setHistEnabled(false);
+			setVisible("aerial", false);
+			setVisible("topo", true);
+			return;
+		}
+		if (mode === "aerial") {
+			setHistEnabled(false);
+			setVisible("topo", false);
+			setVisible("aerial", true);
+			return;
+		}
+		// historical
+		setVisible("topo", false);
+		setVisible("aerial", false);
+		setHistEnabled(true);
+		// Ensure something is selected so the map actually changes
+		if (!selectedId && entries?.[0]?.id) {
+			setSelected(entries[0].id);
+		}
+	};
 	const toggleButtonStyle: CSSProperties = {
 		padding: `${spacing.sm} ${spacing.lg}`,
 		borderRadius: borderRadius.md,
@@ -101,24 +132,54 @@ export default function BasemapToggles() {
 					color: colors.textPrimary
 				}}
 			>
+				<div style={{ gridColumn: "1 / -1", fontSize: typography.fontSize.sm, color: colors.textMuted, marginTop: spacing.xs }}>
+					Base layer (pick one)
+				</div>
 				<label style={{ display: "flex", alignItems: "center", gap: spacing.sm, cursor: "pointer", color: colors.textPrimary }}>
 					<input
-						type="checkbox"
-						checked={visible.topo}
-						onChange={(e) => setVisible("topo", e.target.checked)}
+						type="radio"
+						name="basemap-base"
+						checked={baseMode === "topo"}
+						onChange={() => setBaseMode("topo")}
 						style={{ accentColor: colors.primary, cursor: "pointer" }}
 					/>
 					Topo
 				</label>
 				<label style={{ display: "flex", alignItems: "center", gap: spacing.sm, cursor: "pointer", color: colors.textPrimary }}>
 					<input
-						type="checkbox"
-						checked={visible.aerial}
-						onChange={(e) => setVisible("aerial", e.target.checked)}
+						type="radio"
+						name="basemap-base"
+						checked={baseMode === "aerial"}
+						onChange={() => setBaseMode("aerial")}
 						style={{ accentColor: colors.primary, cursor: "pointer" }}
 					/>
 					Aerial
 				</label>
+				<label
+					style={{
+						display: "flex",
+						alignItems: "center",
+						gap: spacing.sm,
+						cursor: is3D ? "not-allowed" : "pointer",
+						color: is3D ? colors.textMuted : colors.textPrimary
+					}}
+					title={is3D ? "Historical imagery is 2D-only for now." : undefined}
+				>
+					<input
+						type="radio"
+						name="basemap-base"
+						checked={baseMode === "historical"}
+						onChange={() => setBaseMode("historical")}
+						disabled={is3D}
+						style={{ accentColor: colors.primary, cursor: is3D ? "not-allowed" : "pointer" }}
+					/>
+					Historical
+				</label>
+				{is3D ? (
+					<div style={{ gridColumn: "1 / -1", fontSize: typography.fontSize.xs, color: colors.textMuted }}>
+						Historical imagery is **2D-only** for now (to keep 3D reliable + fast).
+					</div>
+				) : null}
 				<label style={{ display: "flex", alignItems: "center", gap: spacing.sm, cursor: "pointer", color: colors.textPrimary }}>
 					<input
 						type="checkbox"
@@ -148,16 +209,10 @@ export default function BasemapToggles() {
 				</label>
 			</div>
 			<hr style={{ border: "none", borderTop: `1px solid ${colors.borderMedium}`, margin: `${spacing.md} 0` }} />
-			<div style={{ display: "flex", alignItems: "center", gap: spacing.md }}>
-				<input 
-					type="checkbox" 
-					checked={histEnabled} 
-					onChange={(e) => setHistEnabled(e.target.checked)}
-					style={{ accentColor: colors.primary, cursor: "pointer" }}
-				/>
-				<span style={{ fontWeight: typography.fontWeight.semibold, fontSize: typography.fontSize.sm, color: colors.textPrimary }}>Historical Imagery</span>
+			<div style={{ fontWeight: typography.fontWeight.semibold, fontSize: typography.fontSize.sm, color: colors.textPrimary }}>
+				Historical Imagery Source
 			</div>
-			{histEnabled ? (
+			{baseMode === "historical" && !is3D ? (
 				<div style={{ display: "flex", gap: spacing.sm, alignItems: "center", marginTop: spacing.sm }}>
 					<select
 						value={selectedId || ""}

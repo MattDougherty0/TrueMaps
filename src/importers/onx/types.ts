@@ -16,6 +16,8 @@ export type ImportOptions = {
 	timeZone: string;
 	useHeuristics: boolean;
 	onlyPoints?: boolean;
+	// When multi-property is enabled, write into the currently active property-scoped files.
+	activePropertyId?: string | null;
 	activeUser: string;
 	importTimestamp: string;
 };

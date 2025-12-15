@@ -1,16 +1,20 @@
+import { propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
+
 export async function appendToLayer(
 	projectDir: string,
 	layerFile: string,
-	feature: GeoJSON.Feature
+	feature: GeoJSON.Feature,
+	activePropertyId?: string | null
 ): Promise<void> {
+	const effectiveFile = propertyScopedGeoJSONPath(layerFile, activePropertyId);
 	try {
-		const text = await window.api.readTextFile(projectDir, `data/${layerFile}`);
+		const text = await window.api.readTextFile(projectDir, `data/${effectiveFile}`);
 		const fc = JSON.parse(text || "{\"type\":\"FeatureCollection\",\"features\":[]}");
 		fc.features.push(feature);
-		await writeFeatureCollection(projectDir, layerFile, fc);
+		await writeFeatureCollection(projectDir, effectiveFile, fc);
 	} catch {
 		const fc = { type: "FeatureCollection", features: [feature] };
-		await writeFeatureCollection(projectDir, layerFile, fc);
+		await writeFeatureCollection(projectDir, effectiveFile, fc);
 	}
 }
 

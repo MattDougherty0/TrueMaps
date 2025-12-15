@@ -7,6 +7,8 @@ export function mapOnxToSchema(parsed: ParsedFeature, opts: ImportOptions): Mapp
 	const tail = rest.join(":").trim();
 	const notes = parsed.desc || "";
 	const geomType = parsed.geometry.type;
+	const iconHint = String((parsed.props as any)?.icon || "").toLowerCase().trim();
+	const colorHint = String((parsed.props as any)?.color || "").trim();
 
 	const withProps = (layerId: string, props: Record<string, unknown>) => ({
 		type: "Feature",
@@ -94,6 +96,12 @@ export function mapOnxToSchema(parsed: ParsedFeature, opts: ImportOptions): Mapp
 						confidence: "observed"
 				  })
 				: null
+		,
+		waypoints: withProps("waypoints", {
+			category: iconHint || (parsed.name || ""),
+			onx_icon: iconHint || undefined,
+			onx_color: colorHint || undefined
+		})
 	};
 
 	let layer: string | null = null;
@@ -147,6 +155,20 @@ export function mapOnxToSchema(parsed: ParsedFeature, opts: ImportOptions): Mapp
 	} else if (!opts.useHeuristics) {
 		return null;
 	} else {
+		// onX exports often don't use prefixes; use icon hints for Point Placemarks.
+		if (!layer && geomType === "Point" && iconHint) {
+			if (iconHint.includes("ladder stand") || iconHint.includes("treestand") || iconHint.includes("tree stand") || iconHint === "stand") {
+				layer = "stands";
+			} else if (iconHint.includes("blind")) {
+				layer = "stands";
+			} else if (iconHint.includes("bedding")) {
+				layer = "beds_points";
+			} else {
+				// Location, Access, Trail Cam, etc.
+				layer = "waypoints";
+			}
+		}
+
 		// Try folder hint from KML if available
 		const folderHint = String((parsed.props as any)?.folder_hint || "").toLowerCase();
 		const include = (s: string) => name.includes(s) || folderHint.includes(s);
@@ -210,7 +232,8 @@ export function mapOnxToSchema(parsed: ParsedFeature, opts: ImportOptions): Mapp
 			} else if (geomType === "Polygon") {
 				layer = "open_woods";
 			} else {
-				return null;
+				// points with no prefix/heuristic match go to waypoints
+				layer = "waypoints";
 			}
 		}
 	}

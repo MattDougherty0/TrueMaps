@@ -15,6 +15,7 @@ import { useHuntSelection } from "../../state/hunts";
 import { useUserStore } from "../../state/user";
 import { shouldShowFeature, getAgeOpacity } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
+import { emptyFeatureCollectionString, propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
 
 const makeHarvestStyle = (opacity: number) =>
 	new Style({
@@ -26,7 +27,7 @@ const makeHarvestStyle = (opacity: number) =>
 	});
 
 export default function HarvestsLayer() {
-	const { projectPath } = useAppStore();
+	const { projectPath, activePropertyId } = useAppStore();
 	const map = useMapInstance();
 	const sourceRef = useRef<VectorSource>(new VectorSource());
 	const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -43,6 +44,7 @@ export default function HarvestsLayer() {
 
 	useEffect(() => {
 		if (!map || !projectPath) return;
+		const dataPath = propertyScopedGeoJSONPath("data/harvests.geojson", activePropertyId);
 
 		const layer = new VectorLayer({
 			source: sourceRef.current,
@@ -58,7 +60,7 @@ export default function HarvestsLayer() {
 		// Load existing
 		(async () => {
 			try {
-				const text = await window.api.readTextFile(projectPath, "data/harvests.geojson");
+				const text = await window.api.readTextFile(projectPath, dataPath);
 				const geojson = JSON.parse(text || "{\"type\":\"FeatureCollection\",\"features\":[]}");
 				const feats = new GeoJSON().readFeatures(geojson, {
 					dataProjection: "EPSG:4326",
@@ -67,7 +69,11 @@ export default function HarvestsLayer() {
 				sourceRef.current.clear();
 				sourceRef.current.addFeatures(feats as any);
 			} catch {
-				// ignore
+				try {
+					await window.api.writeTextFile(projectPath, dataPath, emptyFeatureCollectionString());
+				} catch {
+					// ignore
+				}
 			}
 		})();
 
@@ -101,7 +107,7 @@ export default function HarvestsLayer() {
 				dataProjection: "EPSG:4326",
 				featureProjection: "EPSG:3857"
 			});
-			await window.api.writeTextFile(projectPath, "data/harvests.geojson", JSON.stringify(gj, null, 2));
+			await window.api.writeTextFile(projectPath, dataPath, JSON.stringify(gj, null, 2));
 		};
 		persistRef.current = persist;
 
@@ -170,7 +176,7 @@ export default function HarvestsLayer() {
 			modifyRef.current = null;
 			layerRef.current = null;
 		};
-	}, [map, projectPath, selectedHuntId]);
+	}, [map, projectPath, selectedHuntId, activePropertyId]);
 
 	// Visibility binding
 	useEffect(() => {
@@ -190,6 +196,7 @@ export default function HarvestsLayer() {
 
 	const onSubmit = async (values: Record<string, unknown>) => {
 		if (!projectPath || !pending) return;
+		const dataPath = propertyScopedGeoJSONPath("data/harvests.geojson", activePropertyId);
 		const { feature } = pending;
 		const activeUser = useUserStore.getState().activeUser;
 		if (!activeUser) {
@@ -206,18 +213,18 @@ export default function HarvestsLayer() {
 			featureProjection: "EPSG:3857"
 		});
 		try {
-			const existing = await window.api.readTextFile(projectPath, "data/harvests.geojson");
+			const existing = await window.api.readTextFile(projectPath, dataPath);
 			const parsed = JSON.parse(existing || "{\"type\":\"FeatureCollection\",\"features\":[]}");
 			parsed.features.push(gj.features[0]);
 			await window.api.writeTextFile(
 				projectPath,
-				"data/harvests.geojson",
+				dataPath,
 				JSON.stringify(parsed, null, 2)
 			);
 		} catch {
 			await window.api.writeTextFile(
 				projectPath,
-				"data/harvests.geojson",
+				dataPath,
 				JSON.stringify(gj, null, 2)
 			);
 		}

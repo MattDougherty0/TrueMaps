@@ -31,6 +31,8 @@ import { getTerrainState, subscribeTerrain, type TerrainState } from "../state/t
 import TerrariumTerrainProvider from "../lib/terrain/TerrariumProvider";
 import { getCameraState, setCameraState, type CameraState } from "../state/camera";
 import { useBasemapStore, type BasemapKey } from "../state/basemaps";
+import useAppStore from "../state/store";
+import { mbtilesUrl } from "../lib/mbtiles/client";
 
 if (typeof window !== "undefined" && !(window as any).Cesium) {
 	(window as any).Cesium = CesiumGlobal;
@@ -38,7 +40,7 @@ if (typeof window !== "undefined" && !(window as any).Cesium) {
 
 	let detachTerrainError: (() => void) | null = null;
 
-	async function applyTerrainProvider(olCesium: OLCesium, state: TerrainState, abort: { cancelled: boolean }) {
+	async function applyTerrainProvider(olCesium: any, state: TerrainState, abort: { cancelled: boolean }) {
 	const scene = olCesium.getCesiumScene();
 	if (state.ionToken) {
 		Ion.defaultAccessToken = state.ionToken;
@@ -82,14 +84,15 @@ if (typeof window !== "undefined" && !(window as any).Cesium) {
 			return originalRequest.apply(this, args as Parameters<typeof originalRequest>);
 		};
 	}
-		if (terrainProvider && "readyPromise" in terrainProvider && terrainProvider.readyPromise) {
-			void terrainProvider.readyPromise
+		const readyPromise = (terrainProvider as any)?.readyPromise as Promise<unknown> | undefined;
+		if (readyPromise) {
+			void readyPromise
 				.then(() => {
 					if (!abort.cancelled) {
 						console.info(`[terrain] ${label} ready.`);
 					}
 				})
-				.catch((error) => {
+				.catch((error: unknown) => {
 					if (!abort.cancelled) {
 						console.error(`[terrain] ${label} failed to become ready`, error);
 					}
@@ -168,7 +171,7 @@ function resolveLonLat(): [number, number] {
 	return [Number.isFinite(lon) ? lon : 0, Number.isFinite(lat) ? lat : 0];
 }
 
-function applyCameraPose(olCesium: OLCesium, camera: CameraState, options: CameraPoseOptions = {}) {
+function applyCameraPose(olCesium: any, camera: CameraState, options: CameraPoseOptions = {}) {
 	const scene = olCesium.getCesiumScene();
 	const cameraController = scene.screenSpaceCameraController;
 	const headingRad = CesiumMath.toRadians(camera.heading);
@@ -214,32 +217,59 @@ export default function MapView() {
 	useEffect(() => {
 		if (!mapRef.current) return;
 		const cesiumBasemapLayers = new Map<string, ImageryLayer>();
-		const cesiumBasemapOrder: BasemapKey[] = ["topo", "aerial"];
 		let pendingBasemapRebuild = false;
 
-		const createBasemapProvider = (key: BasemapKey): { provider: ImageryProvider; alpha?: number } | null => {
+		const createBasemapProvider = async (
+			key: BasemapKey
+		): Promise<{ provider: ImageryProvider; alpha?: number } | null> => {
 			try {
 				switch (key) {
 					case "topo":
 						return {
-							provider: new ArcGisMapServerImageryProvider({
-								url: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer",
-								maximumLevel: 16,
-								usePreCachedTilesIfAvailable: true,
-								tilingScheme: new WebMercatorTilingScheme(),
-								credit: new Credit("USGS Topographic Map")
-							})
+							provider: (await ArcGisMapServerImageryProvider.fromUrl(
+								"https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer",
+								{
+									maximumLevel: 16,
+									usePreCachedTilesIfAvailable: true,
+									tilingScheme: new WebMercatorTilingScheme(),
+									credit: new Credit("USGS Topographic Map")
+								} as any
+							)) as unknown as ImageryProvider
 						};
 					case "aerial":
 						return {
-							provider: new ArcGisMapServerImageryProvider({
-								url: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer",
-								maximumLevel: 17,
-								usePreCachedTilesIfAvailable: true,
-								tilingScheme: new WebMercatorTilingScheme(),
-								credit: new Credit("USGS Imagery")
-							})
+							provider: (await ArcGisMapServerImageryProvider.fromUrl(
+								"https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer",
+								{
+									maximumLevel: 17,
+									usePreCachedTilesIfAvailable: true,
+									tilingScheme: new WebMercatorTilingScheme(),
+									credit: new Credit("USGS Imagery")
+								} as any
+							)) as unknown as ImageryProvider
 						};
+					case "hillshade": {
+						const { projectPath, activePropertyId } = useAppStore.getState();
+						if (!projectPath) return null;
+						return {
+							provider: new (CesiumGlobal as any).UrlTemplateImageryProvider({
+								url: mbtilesUrl("hillshade", activePropertyId),
+								tilingScheme: new WebMercatorTilingScheme()
+							}) as ImageryProvider,
+							alpha: 0.55
+						};
+					}
+					case "slope": {
+						const { projectPath, activePropertyId } = useAppStore.getState();
+						if (!projectPath) return null;
+						return {
+							provider: new (CesiumGlobal as any).UrlTemplateImageryProvider({
+								url: mbtilesUrl("slope", activePropertyId),
+								tilingScheme: new WebMercatorTilingScheme()
+							}) as ImageryProvider,
+							alpha: 0.45
+						};
+					}
 					default:
 						return null;
 				}
@@ -249,7 +279,7 @@ export default function MapView() {
 			}
 		};
 
-		let olCesium: OLCesium | null = null;
+		let olCesium: any | null = null;
 		// Keep a handle so we can force a resync when switching modes.
 		let vectorSync: any | null = null;
 
@@ -273,8 +303,28 @@ export default function MapView() {
 			clearCesiumBasemaps();
 			let addedAtLeastOne = false;
 			const terrainState = getTerrainState();
-			// Prioritize Ion imagery if token available (single layer for performance)
-			if (terrainState.ionToken) {
+			const visible = useBasemapStore.getState().visible;
+
+			// In 3D, treat Topo/Aerial toggles as the base selector (prefer aerial if both checked).
+			// Ion imagery is *fallback* only, otherwise toggles would appear to do nothing.
+			const preferredBase: BasemapKey | null = visible.aerial ? "aerial" : visible.topo ? "topo" : null;
+			if (preferredBase) {
+				const config = await createBasemapProvider(preferredBase);
+				if (config) {
+					try {
+						const layer = scene.imageryLayers.addImageryProvider(config.provider);
+						if (typeof config.alpha === "number") layer.alpha = config.alpha;
+						scene.imageryLayers.lowerToBottom(layer);
+						cesiumBasemapLayers.set(preferredBase, layer);
+						addedAtLeastOne = true;
+						console.info(`[cesium] Added ${preferredBase} basemap (3D).`);
+					} catch (error) {
+						console.error(`[cesium] Failed to attach ${preferredBase} layer`, error);
+					}
+				}
+			}
+
+			if (!addedAtLeastOne && terrainState.ionToken) {
 				try {
 					const ionImagery = await createWorldImageryAsync({
 						style: IonWorldImageryStyle.AERIAL_WITH_LABELS
@@ -283,56 +333,42 @@ export default function MapView() {
 					scene.imageryLayers.lowerToBottom(layer);
 					cesiumBasemapLayers.set("__ion_base", layer);
 					addedAtLeastOne = true;
-					console.info("[cesium] Added Cesium ion world imagery base (single layer for performance).");
+					console.info("[cesium] Added Cesium ion world imagery base (fallback).");
 				} catch (error) {
 					console.error("[cesium] Failed to attach ion world imagery base", error);
 				}
 			}
-			// Only add one additional basemap if ion imagery failed, not multiple layers
+
 			if (!addedAtLeastOne) {
-				const visible = useBasemapStore.getState().visible;
-				// Try topo first, then aerial, then OSM fallback
-				if (visible.topo) {
-					const config = createBasemapProvider("topo");
-					if (config) {
-						try {
-							const layer = scene.imageryLayers.addImageryProvider(config.provider);
-							cesiumBasemapLayers.set("topo", layer);
-							addedAtLeastOne = true;
-							console.info("[cesium] Added USGS Topo (single layer).");
-						} catch (error) {
-							console.error("[cesium] Failed to attach topo layer", error);
-						}
-					}
-				}
-				if (!addedAtLeastOne && visible.aerial) {
-					const config = createBasemapProvider("aerial");
-					if (config) {
-						try {
-							const layer = scene.imageryLayers.addImageryProvider(config.provider);
-							cesiumBasemapLayers.set("aerial", layer);
-							addedAtLeastOne = true;
-							console.info("[cesium] Added USGS Aerial (single layer).");
-						} catch (error) {
-							console.error("[cesium] Failed to attach aerial layer", error);
-						}
-					}
-				}
-				if (!addedAtLeastOne) {
-					try {
-						const fallbackLayer = scene.imageryLayers.addImageryProvider(
-							new OpenStreetMapImageryProvider({
-								url: "https://tile.openstreetmap.org/"
-							})
-						);
-						cesiumBasemapLayers.set("__fallback_osm", fallbackLayer);
-						addedAtLeastOne = true;
-						console.info("[cesium] Added OpenStreetMap fallback (single layer).");
-					} catch (error) {
-						console.error("[cesium] Failed to attach fallback imagery layer", error);
-					}
+				try {
+					const fallbackLayer = scene.imageryLayers.addImageryProvider(
+						new OpenStreetMapImageryProvider({
+							url: "https://tile.openstreetmap.org/"
+						})
+					);
+					cesiumBasemapLayers.set("__fallback_osm", fallbackLayer);
+					addedAtLeastOne = true;
+					console.info("[cesium] Added OpenStreetMap fallback.");
+				} catch (error) {
+					console.error("[cesium] Failed to attach fallback imagery layer", error);
 				}
 			}
+
+			// Optional overlays (3D): hillshade + slope.
+			for (const overlayKey of ["hillshade", "slope"] as BasemapKey[]) {
+				if (!visible[overlayKey]) continue;
+				const cfg = await createBasemapProvider(overlayKey);
+				if (!cfg) continue;
+				try {
+					const layer = scene.imageryLayers.addImageryProvider(cfg.provider);
+					if (typeof cfg.alpha === "number") layer.alpha = cfg.alpha;
+					cesiumBasemapLayers.set(overlayKey, layer);
+					scene.imageryLayers.raiseToTop(layer);
+				} catch (error) {
+					console.error(`[cesium] Failed to attach overlay ${overlayKey}`, error);
+				}
+			}
+
 			scene.requestRender();
 		};
 
@@ -378,6 +414,7 @@ export default function MapView() {
 		const abort = { cancelled: false };
 		const initialTerrain = getTerrainState();
 		let unsubscribeBasemap: (() => void) | null = null;
+		let unsubscribeApp: (() => void) | null = null;
 		let removeTileProgressListener: (() => void) | null = null;
 		try {
 			olCesium = new OLCesium({ map, target: mapRef.current });
@@ -439,8 +476,13 @@ export default function MapView() {
 				() => {
 					if (!olCesium || !olCesium.getEnabled()) return;
 					queueCesiumBasemapRebuild();
-				},
-				(state) => state.visible
+				}
+			);
+			unsubscribeApp = useAppStore.subscribe(
+				() => {
+					if (!olCesium || !olCesium.getEnabled()) return;
+					queueCesiumBasemapRebuild();
+				}
 			);
 		} catch (error) {
 			console.error("Failed to start Cesium overlay", error);
@@ -540,7 +582,7 @@ export default function MapView() {
 						const cameraState = getCameraState();
 						// Suppress camera sync during terrain enable
 						suppressCameraSync = true;
-						applyCameraPose(olCesium as OLCesium, cameraState, { animate: true, duration: 1.3 });
+						applyCameraPose(olCesium as any, cameraState, { animate: true, duration: 1.3 });
 						queueCesiumBasemapRebuild();
 						// Re-enable sync after camera animation completes
 						setTimeout(() => {
@@ -627,6 +669,9 @@ export default function MapView() {
 			setMap(null);
 			if (unsubscribeBasemap) {
 				unsubscribeBasemap();
+			}
+			if (unsubscribeApp) {
+				unsubscribeApp();
 			}
 			clearCesiumBasemaps();
 			if (removeTileProgressListener) {

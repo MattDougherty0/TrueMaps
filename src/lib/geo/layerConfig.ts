@@ -141,6 +141,20 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		icon: "🌿",
 		legendFill: "#0f766e"
 	},
+	waypoints: {
+		file: "waypoints.geojson",
+		geometry: "Point",
+		style: (feature: any) => {
+			const color = String(feature?.get?.("onx_color") || feature?.get?.("color") || "#ef4444");
+			// onX exports often include strings like "rgba(8,122,255,1)"
+			const fill = color.startsWith("rgba(") || color.startsWith("rgb(") ? color : "#ef4444";
+			return pointVector(fill, "#fff", 7, 4);
+		},
+		addable: true,
+		label: "Waypoints",
+		icon: "📍",
+		legendFill: "#ef4444"
+	},
 	acorn_flats: {
 		file: "acorn_flats.geojson",
 		geometry: "Polygon",
@@ -294,6 +308,7 @@ export const layerOrder: LayerId[] = [
 	"trails",
 	"tree_stands",
 	"open_woods",
+	"waypoints",
 	"cover_points",
 	"acorn_flats",
 	"bedding_areas",

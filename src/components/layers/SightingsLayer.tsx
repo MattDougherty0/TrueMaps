@@ -15,6 +15,7 @@ import { useUserStore } from "../../state/user";
 import { shouldShowFeature, getAgeOpacity } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
 import { useVisibilityStore } from "../../state/visibility";
+import { emptyFeatureCollectionString, propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
 
 const makeSightingStyle = (opacity: number) =>
 	new Style({
@@ -26,7 +27,7 @@ const makeSightingStyle = (opacity: number) =>
 	});
 
 export default function SightingsLayer() {
-	const { projectPath } = useAppStore();
+	const { projectPath, activePropertyId } = useAppStore();
 	const map = useMapInstance();
 	const sourceRef = useRef<VectorSource>(new VectorSource());
 	const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -43,6 +44,7 @@ export default function SightingsLayer() {
 
 	useEffect(() => {
 		if (!map || !projectPath) return;
+		const dataPath = propertyScopedGeoJSONPath("data/animal_sightings.geojson", activePropertyId);
 
 		const layer = new VectorLayer({
 			source: sourceRef.current,
@@ -60,7 +62,7 @@ export default function SightingsLayer() {
 			try {
 				const text = await window.api.readTextFile(
 					projectPath,
-					"data/animal_sightings.geojson"
+					dataPath
 				);
 				const geojson = JSON.parse(text || "{\"type\":\"FeatureCollection\",\"features\":[]}");
 				const feats = new GeoJSON().readFeatures(geojson, {
@@ -70,7 +72,11 @@ export default function SightingsLayer() {
 				sourceRef.current.clear();
 				sourceRef.current.addFeatures(feats as any);
 			} catch {
-				// ignore
+				try {
+					await window.api.writeTextFile(projectPath, dataPath, emptyFeatureCollectionString());
+				} catch {
+					// ignore
+				}
 			}
 		};
 		void reload();
@@ -108,7 +114,7 @@ export default function SightingsLayer() {
 			});
 			await window.api.writeTextFile(
 				projectPath,
-				"data/animal_sightings.geojson",
+				dataPath,
 				JSON.stringify(gj, null, 2)
 			);
 		};
@@ -194,10 +200,11 @@ export default function SightingsLayer() {
 			modifyRef.current = null;
 			layerRef.current = null;
 		};
-	}, [map, projectPath, selectedHuntId]);
+	}, [map, projectPath, selectedHuntId, activePropertyId]);
 
 	const onSubmit = async (values: Record<string, unknown>) => {
 		if (!projectPath || !pending) return;
+		const dataPath = propertyScopedGeoJSONPath("data/animal_sightings.geojson", activePropertyId);
 		const { feature } = pending;
 		const activeUser = useUserStore.getState().activeUser;
 		if (!activeUser) {
@@ -216,19 +223,19 @@ export default function SightingsLayer() {
 		try {
 			const existing = await window.api.readTextFile(
 				projectPath,
-				"data/animal_sightings.geojson"
+				dataPath
 			);
 			const parsed = JSON.parse(existing || "{\"type\":\"FeatureCollection\",\"features\":[]}");
 			parsed.features.push(gj.features[0]);
 			await window.api.writeTextFile(
 				projectPath,
-				"data/animal_sightings.geojson",
+				dataPath,
 				JSON.stringify(parsed, null, 2)
 			);
 		} catch {
 			await window.api.writeTextFile(
 				projectPath,
-				"data/animal_sightings.geojson",
+				dataPath,
 				JSON.stringify(gj, null, 2)
 			);
 		}

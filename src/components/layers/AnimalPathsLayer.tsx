@@ -15,6 +15,7 @@ import { shouldShowFeature } from "../../lib/geo/filters";
 import { useUserStore } from "../../state/user";
 import { useSelectionStore } from "../../state/selection";
 import { useVisibilityStore } from "../../state/visibility";
+import { emptyFeatureCollectionString, propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
 
 const pathStyle = (feature?: Feature<LineString>) =>
 	new Style({
@@ -36,7 +37,7 @@ const pathStyle = (feature?: Feature<LineString>) =>
 	});
 
 export default function AnimalPathsLayer() {
-	const { projectPath } = useAppStore();
+	const { projectPath, activePropertyId } = useAppStore();
 	const map = useMapInstance();
 	const sourceRef = useRef<VectorSource>(new VectorSource());
 	const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -53,10 +54,11 @@ export default function AnimalPathsLayer() {
 
 	useEffect(() => {
 		if (!map || !projectPath) return;
+		const dataPath = propertyScopedGeoJSONPath("data/animal_paths.geojson", activePropertyId);
 
 		const layer = new VectorLayer({
 			source: sourceRef.current,
-			style: (feat) => (shouldShowFeature("animal_paths", feat) ? pathStyle(feat as Feature<LineString>) : null)
+			style: (feat) => (shouldShowFeature("animal_paths", feat) ? pathStyle(feat as Feature<LineString>) : undefined)
 		});
 		layerRef.current = layer;
 		map.addLayer(layer);
@@ -66,7 +68,7 @@ export default function AnimalPathsLayer() {
 			try {
 				const text = await window.api.readTextFile(
 					projectPath,
-					"data/animal_paths.geojson"
+					dataPath
 				);
 				const geojson = JSON.parse(text || "{\"type\":\"FeatureCollection\",\"features\":[]}");
 				const feats = new GeoJSON().readFeatures(geojson, {
@@ -91,7 +93,11 @@ export default function AnimalPathsLayer() {
 					await persistRef.current();
 				}
 			} catch {
-				// ignore
+				try {
+					await window.api.writeTextFile(projectPath, dataPath, emptyFeatureCollectionString());
+				} catch {
+					// ignore
+				}
 			}
 		};
 		void reload();
@@ -103,7 +109,7 @@ export default function AnimalPathsLayer() {
 				dataProjection: "EPSG:4326",
 				featureProjection: "EPSG:3857"
 			});
-			await window.api.writeTextFile(projectPath, "data/animal_paths.geojson", JSON.stringify(gj, null, 2));
+			await window.api.writeTextFile(projectPath, dataPath, JSON.stringify(gj, null, 2));
 		};
 		persistRef.current = persist;
 
@@ -194,7 +200,7 @@ export default function AnimalPathsLayer() {
 			modifyRef.current = null;
 			layerRef.current = null;
 		};
-	}, [map, projectPath, selectedHuntId]);
+	}, [map, projectPath, selectedHuntId, activePropertyId]);
 
 	const onSubmit = async (values: Record<string, unknown>) => {
 		if (!projectPath || !pending) return;

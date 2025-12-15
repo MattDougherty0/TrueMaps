@@ -148,7 +148,17 @@ electron_1.app.whenReady().then(() => {
                 respond({ statusCode: 400 });
                 return;
             }
-            const mbtilesPath = path.join(activeProjectDir, "tiles", `${tileset}.mbtiles`);
+            const tilesDir = path.join(activeProjectDir, "tiles");
+            let mbtilesPath = path.join(tilesDir, `${tileset}.mbtiles`);
+            // Fallback: if requesting a property-specific tileset (e.g., hillshade_mckean)
+            // but it doesn't exist, fall back to the base tileset (hillshade).
+            if (!fssync.existsSync(mbtilesPath) && tileset.includes("_")) {
+                const baseTileset = tileset.slice(0, tileset.lastIndexOf("_"));
+                const fallbackPath = path.join(tilesDir, `${baseTileset}.mbtiles`);
+                if (fssync.existsSync(fallbackPath)) {
+                    mbtilesPath = fallbackPath;
+                }
+            }
             if (!fssync.existsSync(mbtilesPath)) {
                 respond({ statusCode: 404 });
                 return;

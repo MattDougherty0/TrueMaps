@@ -16,6 +16,8 @@ export type LayerId =
 	| "tree_stands"
 	| "bedding_areas"
 	| "beds_points"
+	| "cover_points"
+	| "waypoints"
 	| "open_woods"
 	| "acorn_flats"
 	| "mast_check_points"
@@ -531,6 +533,18 @@ export const layerSchemas: Record<LayerId, JsonSchema> = {
 			},
 			notes: { type: "string", title: "Notes" }
 		}
+	},
+	waypoints: {
+		type: "object",
+		properties: {
+			name: { type: "string", title: "Name" },
+			category: { type: "string", title: "Category" },
+			onx_icon: { type: "string", title: "onX Icon", readOnly: true },
+			onx_color: { type: "string", title: "onX Color", readOnly: true },
+			date: dateSchema,
+			notes: { type: "string", title: "Notes" }
+		},
+		required: []
 	}
 };
 

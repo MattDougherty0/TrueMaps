@@ -6,6 +6,7 @@ import { appendToLayer } from "./writer";
 import { writeReport } from "./report";
 import type { ImportOptions, ImportReport, TracksTarget } from "./types";
 import { layerConfigById } from "../../lib/geo/layerConfig";
+import useAppStore from "../../state/store";
 
 export async function importOnx(opts: ImportOptions): Promise<ImportReport> {
 	const report: ImportReport = {
@@ -56,12 +57,12 @@ export async function importOnx(opts: ImportOptions): Promise<ImportReport> {
 				});
 				continue;
 			}
-			const dup = await isDuplicate(opts.projectDir, cfg.file, mapped);
+			const dup = await isDuplicate(opts.projectDir, cfg.file, mapped, opts.activePropertyId);
 			if (dup) {
 				report.duplicates += 1;
 				continue;
 			}
-			await appendToLayer(opts.projectDir, cfg.file, mapped.feature);
+			await appendToLayer(opts.projectDir, cfg.file, mapped.feature, opts.activePropertyId);
 			report.countsByLayer[mapped.layerId] =
 				(report.countsByLayer[mapped.layerId] || 0) + 1;
 		} catch (e: any) {
@@ -94,6 +95,7 @@ export async function runOnxImportWithDialog(
 	if (!activeUser) {
 		throw new Error("Active user required for import");
 	}
+	const { activePropertyId } = useAppStore.getState();
 	const importTimestamp = new Date().toISOString();
 	const report = await importOnx({
 		projectDir,
@@ -102,6 +104,7 @@ export async function runOnxImportWithDialog(
 		timeZone,
 		useHeuristics,
 		onlyPoints,
+		activePropertyId,
 		activeUser,
 		importTimestamp
 	});

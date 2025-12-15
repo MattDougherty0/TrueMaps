@@ -17,6 +17,7 @@ import { useVisibilityStore } from "../../state/visibility";
 import { useUserStore } from "../../state/user";
 import { shouldShowFeature } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
+import { propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
 
 export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 	const cfg = layerConfigById[layerId];
@@ -33,7 +34,7 @@ export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 	const effectiveFile =
 		layerId === "property_boundary"
 			? properties.find((p) => p.id === activePropertyId)?.boundaryFile || "property_boundary.geojson"
-			: cfg.file;
+			: propertyScopedGeoJSONPath(cfg.file, activePropertyId);
 
 	useEffect(() => {
 		if (!map || !projectPath) return;
