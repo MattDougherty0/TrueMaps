@@ -6,6 +6,7 @@ import FeatureForm from "./FeatureForm";
 import { useMapInstance } from "../state/map";
 import { toLonLat } from "ol/proj";
 import useAppStore from "../state/store";
+import { borderRadius, colors, spacing, typography } from "../lib/theme";
 
 export default function FeatureDetailsPanel() {
 	const selected = useSelectionStore((s) => s.selected);
@@ -141,54 +142,106 @@ export default function FeatureDetailsPanel() {
 
 	if (!selected || !cfg || !layerId) return null;
 
+	const panelStyle: React.CSSProperties = {
+		position: "fixed",
+		left: 12,
+		bottom: 12,
+		zIndex: 1800,
+		width: "min(560px, calc(100vw - 24px))",
+		maxHeight: "min(56vh, 520px)",
+		overflow: "auto",
+		padding: spacing.xl,
+		borderRadius: borderRadius.xl,
+		border: `1px solid ${colors.borderMedium}`,
+		background: colors.bgPanel,
+		boxShadow: colors.shadowXLarge,
+		backdropFilter: "blur(10px)"
+	};
+
+	const buttonBase: React.CSSProperties = {
+		padding: `${spacing.xs} ${spacing.md}`,
+		borderRadius: borderRadius.md,
+		border: `1px solid ${colors.borderMedium}`,
+		background: colors.bgButton,
+		color: colors.textPrimary,
+		fontSize: typography.fontSize.sm,
+		fontWeight: typography.fontWeight.medium,
+		cursor: "pointer",
+		transition: "all 0.15s ease",
+		whiteSpace: "nowrap"
+	};
+
+	const primaryButton: React.CSSProperties = {
+		...buttonBase,
+		background: colors.primary,
+		borderColor: colors.primary,
+		color: colors.textOnPrimary
+	};
+
+	const dangerButton: React.CSSProperties = {
+		...buttonBase,
+		background: "rgba(239, 68, 68, 0.10)",
+		borderColor: "rgba(239, 68, 68, 0.25)",
+		color: colors.error
+	};
+
+	const subtleText: React.CSSProperties = { fontSize: typography.fontSize.xs, color: colors.textMuted };
+
 	return (
-		<div
-			style={{
-				position: "fixed",
-				left: 12,
-				bottom: 12,
-				padding: 12,
-				borderRadius: 8,
-				border: "1px solid rgba(0,0,0,0.12)",
-				background: "rgba(255,255,255,0.96)",
-				boxShadow: "0 16px 32px rgba(15,23,42,0.18)",
-				zIndex: 1800,
-				minWidth: 320,
-				maxWidth: 560
-			}}
-		>
-			<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-				<div style={{ display: "flex", flexDirection: "column" }}>
-					<span style={{ fontWeight: 600, fontSize: 14 }}>
-						{cfg.icon ? `${cfg.icon} ` : ""}
-						{featureName || cfg.label}
-					</span>
-					{featureName ? (
-						<span style={{ fontSize: 11, color: "rgba(15,23,42,0.6)" }}>{cfg.label}</span>
-					) : null}
-				</div>
-				<div style={{ display: "flex", gap: 6 }}>
-					<button onClick={onToggleGeom} style={{ fontSize: 12, padding: "4px 8px" }}>
-						{geomEdit ? "Stop Edit" : "Edit geometry"}
+		<div style={panelStyle}>
+			<div style={{ display: "flex", flexDirection: "column", gap: spacing.md }}>
+				{/* Header row: give the title maximum horizontal room */}
+				<div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: spacing.lg }}>
+					<div style={{ display: "flex", alignItems: "flex-start", gap: spacing.sm, minWidth: 0, flex: 1 }}>
+						<span style={{ fontSize: 18, flex: "0 0 auto" }}>{cfg.icon ?? "📍"}</span>
+						<div style={{ minWidth: 0, flex: 1 }}>
+							<div
+								style={{
+									fontSize: typography.fontSize.lg,
+									fontWeight: typography.fontWeight.semibold,
+									color: colors.textPrimary,
+									lineHeight: typography.lineHeight.tight,
+									overflow: "hidden",
+									textOverflow: "ellipsis",
+									whiteSpace: "nowrap"
+								}}
+								title={featureName || cfg.label}
+							>
+								{featureName || cfg.label}
+							</div>
+							<div style={subtleText}>{featureName ? cfg.label : "Selected feature"}</div>
+						</div>
+					</div>
+					<button
+						onClick={() => useSelectionStore.getState().setSelected(null)}
+						style={{ ...buttonBase, background: "transparent" }}
+						title="Close"
+					>
+						Close
 					</button>
-					<button onClick={onZoomTo} style={{ fontSize: 12, padding: "4px 8px" }}>
+				</div>
+
+				{/* Actions row: moved below so it doesn't squeeze the title */}
+				<div style={{ display: "flex", gap: spacing.sm, flexWrap: "wrap", justifyContent: "flex-end" }}>
+					<button onClick={onZoomTo} style={buttonBase}>
 						Zoom to
 					</button>
+					<button onClick={onToggleGeom} style={buttonBase}>
+						{geomEdit ? "Stop geometry edit" : "Edit geometry"}
+					</button>
 					{canDelete ? (
-						<button
-							onClick={onDelete}
-							style={{ fontSize: 12, padding: "4px 8px", color: "#c62828", borderColor: "rgba(198,40,40,0.3)" }}
-						>
+						<button onClick={onDelete} style={dangerButton}>
 							Delete
 						</button>
 					) : null}
-					<button onClick={() => setEditing((s) => !s)} style={{ fontSize: 12, padding: "4px 8px" }}>
-						{editing ? "Close Edit" : "Edit"}
+					<button onClick={() => setEditing((s) => !s)} style={buttonBase}>
+						{editing ? "Done" : "Edit details"}
 					</button>
 				</div>
 			</div>
+			<div style={{ height: 1, background: colors.border, margin: `${spacing.lg} 0` }} />
 			{editing ? (
-				<div style={{ marginTop: 8 }}>
+				<div>
 					<FeatureForm
 						layerId={layerId}
 						initialValues={editInitial as any}
@@ -204,13 +257,27 @@ export default function FeatureDetailsPanel() {
 				</div>
 			) : (
 				<>
-					<div style={{ fontSize: 12, color: "rgba(0,0,0,0.7)", display: "flex", flexDirection: "column", gap: 4 }}>
+					<div
+						style={{
+							display: "grid",
+							gridTemplateColumns: "120px 1fr",
+							gap: spacing.sm,
+							alignItems: "baseline",
+							fontSize: typography.fontSize.sm,
+							color: colors.textPrimary
+						}}
+					>
 						{Object.entries(props)
-							.filter(([k]) => !["geometry", "name", "imported_by", "imported_at", "created_by", "created_at"].includes(k))
+							.filter(([k]) => !["geometry", "imported_by", "imported_at", "created_by", "created_at"].includes(k))
 							.slice(0, 10)
 							.map(([k, v]) => (
-								<div key={k}>
-									<strong>{k}</strong>: {Array.isArray(v) ? v.join(", ") : String(v)}
+								<div key={k} style={{ display: "contents" }}>
+									<div style={{ color: colors.textMuted, fontWeight: typography.fontWeight.medium, textTransform: "capitalize" }}>
+										{k.replace(/_/g, " ")}
+									</div>
+									<div style={{ color: colors.textPrimary, wordBreak: "break-word" }}>
+										{Array.isArray(v) ? v.join(", ") : String(v)}
+									</div>
 								</div>
 							))}
 						{(() => {
@@ -235,19 +302,29 @@ export default function FeatureDetailsPanel() {
 								metaRows.push({ label: "Imported at", value: formatted });
 							}
 							return metaRows.map((row) => (
-								<div key={row.label}>
-									<strong>{row.label}</strong>: {row.value}
+								<div key={row.label} style={{ display: "contents" }}>
+									<div style={{ color: colors.textMuted, fontWeight: typography.fontWeight.medium }}>{row.label}</div>
+									<div style={{ color: colors.textPrimary }}>{row.value}</div>
 								</div>
 							));
 						})()}
 					</div>
 					{layerId === "trail_cameras" ? (
-						<div style={{ marginTop: 10, borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 10 }}>
-							<div style={{ fontWeight: 600, fontSize: 12, marginBottom: 6 }}>Camera Media</div>
-							<div style={{ fontSize: 12, color: "rgba(0,0,0,0.65)", marginBottom: 8 }}>
-								Folder: <code>{mediaFolder || "— (not linked yet)"}</code>
+						<div style={{ marginTop: spacing.xl }}>
+							<div style={{ height: 1, background: colors.border, margin: `${spacing.lg} 0` }} />
+							<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: spacing.md }}>
+								<div style={{ fontWeight: typography.fontWeight.semibold, fontSize: typography.fontSize.sm, color: colors.textPrimary }}>
+									Camera Media
+								</div>
+								<div style={subtleText}>{cameraFiles ? `${cameraFiles.length} file(s)` : "Not linked"}</div>
 							</div>
-							<div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+							<div style={{ marginTop: spacing.sm, fontSize: typography.fontSize.sm, color: colors.textSecondary }}>
+								Folder:{" "}
+								<code style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: colors.textPrimary }}>
+									{mediaFolder || "—"}
+								</code>
+							</div>
+							<div style={{ display: "flex", gap: spacing.sm, flexWrap: "wrap", marginTop: spacing.md }}>
 								<button
 									onClick={async () => {
 										if (!projectPath) return;
@@ -263,7 +340,7 @@ export default function FeatureDetailsPanel() {
 										feature.set("media_folder", res.folder);
 										window.dispatchEvent(new Event(`layer:persist:${layerId}`));
 									}}
-									style={{ fontSize: 12, padding: "6px 10px", cursor: "pointer" }}
+									style={primaryButton}
 								>
 									Link folder…
 								</button>
@@ -278,7 +355,7 @@ export default function FeatureDetailsPanel() {
 												// ignore
 											}
 										}}
-										style={{ fontSize: 12, padding: "6px 10px", cursor: "pointer" }}
+										style={buttonBase}
 									>
 										Open folder
 									</button>
@@ -286,17 +363,17 @@ export default function FeatureDetailsPanel() {
 							</div>
 							{cameraFiles ? (
 								cameraFiles.length ? (
-									<div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+									<div style={{ display: "flex", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md }}>
 										{cameraFiles.slice(0, 36).map((rel) => (
 											<div
 												key={rel}
 												style={{
 													width: 96,
 													height: 72,
-													borderRadius: 6,
+													borderRadius: borderRadius.md,
 													overflow: "hidden",
-													border: "1px solid rgba(0,0,0,0.1)",
-													background: "#f3f3f3",
+													border: `1px solid ${colors.border}`,
+													background: colors.bgSecondary,
 													cursor: cameraPreviews[rel] ? "pointer" : "default"
 												}}
 												onClick={() => {
@@ -308,32 +385,45 @@ export default function FeatureDetailsPanel() {
 												{cameraPreviews[rel] ? (
 													<img src={cameraPreviews[rel]} alt={rel} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
 												) : (
-													<div style={{ fontSize: 10, padding: 6 }}>{rel.split("/").pop()}</div>
+													<div style={{ fontSize: typography.fontSize.xs, padding: spacing.md }}>{rel.split("/").pop()}</div>
 												)}
 											</div>
 										))}
 									</div>
 								) : (
-									<div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)" }}>No media found in this folder.</div>
+									<div style={{ marginTop: spacing.md, fontSize: typography.fontSize.sm, color: colors.textMuted }}>
+										No media found in this folder.
+									</div>
 								)
 							) : (
-								<div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)" }}>Link a folder to see images here.</div>
+								<div style={{ marginTop: spacing.md, fontSize: typography.fontSize.sm, color: colors.textMuted }}>
+									Link a folder to see images here.
+								</div>
 							)}
 						</div>
 					) : null}
-					<div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+					<div style={{ height: 1, background: colors.border, margin: `${spacing.lg} 0` }} />
+					<div style={{ display: "flex", gap: spacing.sm, alignItems: "center" }}>
 						<input
 							type="text"
 							value={quickNote}
 							onChange={(e) => setQuickNote(e.target.value)}
 							placeholder="Quick note…"
-							style={{ flex: 1, fontSize: 12, padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd" }}
+							style={{
+								flex: 1,
+								fontSize: typography.fontSize.sm,
+								padding: `${spacing.sm} ${spacing.md}`,
+								borderRadius: borderRadius.md,
+								border: `1px solid ${colors.borderMedium}`,
+								background: colors.bgPanelSolid,
+								color: colors.textPrimary
+							}}
 							onKeyDown={(e) => {
 								if ((e.metaKey || e.ctrlKey) && e.key === "Enter") onSaveQuickNote();
 							}}
 						/>
-						<button onClick={onSaveQuickNote} style={{ fontSize: 12, padding: "6px 10px" }}>
-							Save
+						<button onClick={onSaveQuickNote} style={primaryButton}>
+							Add note
 						</button>
 					</div>
 				</>

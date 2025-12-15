@@ -18,6 +18,7 @@ import { useUserStore } from "../../state/user";
 import { shouldShowFeature } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
 import { propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
+import { borderRadius, colors, spacing, typography } from "../../lib/theme";
 
 export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 	const cfg = layerConfigById[layerId];
@@ -334,16 +335,29 @@ export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 		<div
 			style={{
 				position: "fixed",
-				left: 0,
-				right: 0,
-				bottom: 0,
-				padding: 12,
-				background: "rgba(255,255,255,0.95)",
-				borderTop: "1px solid #ddd",
-				zIndex: 2000
+				left: 12,
+				right: 12,
+				bottom: 12,
+				padding: spacing.xl,
+				background: colors.bgPanel,
+				border: `1px solid ${colors.borderMedium}`,
+				borderRadius: borderRadius.xl,
+				boxShadow: colors.shadowXLarge,
+				zIndex: 2000,
+				backdropFilter: "blur(10px)"
 			}}
 		>
-			<h3 style={{ marginTop: 0 }}>Add</h3>
+			<div style={{ display: "flex", alignItems: "center", gap: spacing.sm, marginBottom: spacing.lg }}>
+				<span style={{ fontSize: 18 }}>{layerConfigById[layerId]?.icon ?? "📍"}</span>
+				<div>
+					<div style={{ fontSize: typography.fontSize.lg, fontWeight: typography.fontWeight.semibold, color: colors.textPrimary }}>
+						Add {layerConfigById[layerId]?.label ?? "Feature"}
+					</div>
+					<div style={{ fontSize: typography.fontSize.sm, color: colors.textMuted }}>
+						Draw on the map, then save details.
+					</div>
+				</div>
+			</div>
 			<FeatureForm layerId={layerId} initialValues={editing.initial} onSubmit={onSubmit} onCancel={onCancel} />
 		</div>
 	) : null;
