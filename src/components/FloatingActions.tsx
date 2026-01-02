@@ -89,9 +89,8 @@ export default function FloatingActions() {
 				title: "Habitat & Food",
 				icon: "🌲",
 				items: [
-					{ layerId: "bedding_areas" as LayerId },
+					{ layerId: "thick_bedding" as LayerId },
 					{ layerId: "open_woods" as LayerId },
-					{ layerId: "cover_points" as LayerId },
 					{ layerId: "acorn_flats" as LayerId },
 					{ layerId: "mast_check_points" as LayerId },
 					{ layerId: "trees_points" as LayerId }

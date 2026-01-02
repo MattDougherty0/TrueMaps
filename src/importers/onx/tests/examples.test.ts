@@ -59,13 +59,13 @@ export function runOnxMappingTests(): { passed: number; failed: Array<{ name: st
 			expectProps: { trail_type: "deer", prominence: "main" }
 		},
 		{
-			name: "bedding: hemlock (Polygon) -> bedding_areas",
+			name: "bedding: hemlock (Polygon) -> thick_bedding",
 			parsed: {
 				name: "bedding: hemlock",
 				desc: "",
 				geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 1], [1, 0], [0, 0]]] }
 			},
-			expectLayer: "bedding_areas"
+			expectLayer: "thick_bedding"
 		},
 		{
 			name: "flat: acorn 4/5 (Polygon) -> acorn_flats",

@@ -95,15 +95,26 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		legendStroke: "rgba(37, 99, 235, 0.75)",
 		areaField: "area_acres"
 	},
-	bedding_areas: {
-		file: "bedding_areas.geojson",
+	thick_bedding: {
+		file: "thick_bedding.geojson",
 		geometry: "Polygon",
-		style: poly("rgba(217, 180, 255, 0.26)", "rgba(168, 85, 247, 0.6)", 1.8),
+		style: (feature: any) => {
+			// Thickness 1-5: 1 = thinnest/lightest, 5 = thickest/darkest
+			const thickness = feature?.get?.("thickness") ?? 3;
+			// Brown-grey base: rgb(139, 119, 101) - warm brown-grey
+			const baseOpacity = 0.15 + (thickness - 1) * 0.12; // 0.15 to 0.63
+			const strokeOpacity = 0.4 + (thickness - 1) * 0.12; // 0.4 to 0.88
+			return poly(
+				`rgba(139, 119, 101, ${baseOpacity})`,
+				`rgba(100, 83, 68, ${strokeOpacity})`,
+				1.8
+			);
+		},
 		addable: true,
-		label: "Bedding Areas",
-		icon: "🛏️",
-		legendFill: "rgba(217, 180, 255, 0.38)",
-		legendStroke: "rgba(168, 85, 247, 0.6)",
+		label: "Thick / Bedding",
+		icon: "🌿",
+		legendFill: "rgba(139, 119, 101, 0.38)",
+		legendStroke: "rgba(100, 83, 68, 0.7)",
 		areaField: "size_acres"
 	},
 	beds_points: {
@@ -131,15 +142,6 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 		legendFill: "rgba(34, 197, 94, 0.26)",
 		legendStroke: "rgba(22, 163, 74, 0.6)",
 		areaField: "area_acres"
-	},
-	cover_points: {
-		file: "cover_points.geojson",
-		geometry: "Point",
-		style: pointVector("#0f766e", "#fff", 7, 4), // Square for "dirt pile"
-		addable: true,
-		label: "Cover Points",
-		icon: "🌿",
-		legendFill: "#0f766e"
 	},
 	waypoints: {
 		file: "waypoints.geojson",
@@ -319,9 +321,8 @@ export const layerOrder: LayerId[] = [
 	"open_woods",
 	"waypoints",
 	"trail_cameras",
-	"cover_points",
 	"acorn_flats",
-	"bedding_areas",
+	"thick_bedding",
 	"trees_points",
 	"beds_points",
 	"mast_check_points",

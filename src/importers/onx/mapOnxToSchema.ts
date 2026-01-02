@@ -63,10 +63,11 @@ export function mapOnxToSchema(parsed: ParsedFeature, opts: ImportOptions): Mapp
 						prominence: tail.includes("faint") ? "faint" : "main"
 				  })
 				: null,
-		bedding_areas:
+		thick_bedding:
 			geomType === "Polygon"
-				? withProps("bedding_areas", {
-						cover_type: tail.includes("hemlock") ? "hemlocks" : undefined
+				? withProps("thick_bedding", {
+						cover_type: tail.includes("hemlock") ? "hemlocks" : undefined,
+						thickness: 3
 				  })
 				: null,
 		beds_points: withProps("beds_points", {}),
@@ -127,7 +128,7 @@ export function mapOnxToSchema(parsed: ParsedFeature, opts: ImportOptions): Mapp
 			case "trail":
 				return geomType === "LineString" ? "trails" : null;
 			case "bedding":
-				return geomType === "Polygon" ? "bedding_areas" : "beds_points";
+				return geomType === "Polygon" ? "thick_bedding" : "beds_points";
 			case "bed":
 				return "beds_points";
 			case "flat":
@@ -188,7 +189,7 @@ export function mapOnxToSchema(parsed: ParsedFeature, opts: ImportOptions): Mapp
 			if (folderHint.includes("trail")) {
 				layer = "trails";
 			} else if (folderHint.includes("bedding")) {
-				layer = geomType === "Polygon" ? "bedding_areas" : "beds_points";
+				layer = geomType === "Polygon" ? "thick_bedding" : "beds_points";
 			} else if (folderHint.includes("bed")) {
 				layer = "beds_points";
 			} else if (folderHint.includes("acorn") || folderHint.includes("flat")) {
@@ -225,7 +226,7 @@ export function mapOnxToSchema(parsed: ParsedFeature, opts: ImportOptions): Mapp
 			} else if (include("tree")) {
 				layer = "trees_points";
 			} else if (include("bed")) {
-				layer = geomType === "Polygon" ? "bedding_areas" : "beds_points";
+				layer = geomType === "Polygon" ? "thick_bedding" : "beds_points";
 			} else if (include("sighting")) {
 				layer = "animal_sightings";
 			} else if (include("hunt")) {

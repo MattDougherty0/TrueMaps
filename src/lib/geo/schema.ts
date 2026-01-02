@@ -14,9 +14,8 @@ export type LayerId =
 	| "property_boundary"
 	| "trees_points"
 	| "tree_stands"
-	| "bedding_areas"
+	| "thick_bedding"
 	| "beds_points"
-	| "cover_points"
 	| "waypoints"
 	| "trail_cameras"
 	| "open_woods"
@@ -156,13 +155,20 @@ export const layerSchemas: Record<LayerId, JsonSchema> = {
 		},
 		required: []
 	},
-	bedding_areas: {
+	thick_bedding: {
 		type: "object",
 		properties: {
 			cover_type: {
 				type: "string",
 				enum: ["pines", "hemlocks", "laurel", "mountain_laurel", "huckleberry", "blueberry", "brush", "tall_grass", "mixed"],
 				title: "Cover Type"
+			},
+			thickness: {
+				type: "integer",
+				minimum: 1,
+				maximum: 5,
+				title: "Thickness (1=Thin, 5=Very Thick)",
+				default: 3
 			},
 			size_acres: { type: "number", title: "Approximate Size (acres)", readOnly: true },
 			freshness: { type: "string", enum: ["fresh", "recent", "old"], title: "Freshness" },
@@ -517,23 +523,6 @@ export const layerSchemas: Record<LayerId, JsonSchema> = {
 			created_by: { type: "string", title: "Created By" }
 		},
 		required: ["harvest_id", "species"]
-	},
-	cover_points: {
-		type: "object",
-		properties: {
-			cover_type: {
-				type: "string",
-				enum: ["pines", "hemlocks", "laurel", "mountain_laurel", "huckleberry", "blueberry", "brush", "tall_grass", "mixed"],
-				title: "Cover Type"
-			},
-			date: dateSchema,
-			photos: {
-				type: "array",
-				title: "Photos",
-				items: { type: "string" }
-			},
-			notes: { type: "string", title: "Notes" }
-		}
 	},
 	waypoints: {
 		type: "object",

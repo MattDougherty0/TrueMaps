@@ -6,7 +6,7 @@ const DATA_FILES = [
 	"property_boundary.geojson",
 	"trees_points.geojson",
 	"tree_stands.geojson",
-	"bedding_areas.geojson",
+	"thick_bedding.geojson",
 	"beds_points.geojson",
 	"open_woods.geojson",
 	"acorn_flats.geojson",
