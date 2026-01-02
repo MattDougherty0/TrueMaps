@@ -25,8 +25,6 @@ const trailStyle = (feature?: FeatureLike) => {
 		type === "logging_road" ? "#8d6e63" : type === "atv" ? "#a35b20" : "#c57b30";
 	const lineDash = condition === "rough" ? [8, 6] : undefined;
 	const width = condition === "recent" ? 3.5 : condition === "old" ? 2.5 : 3;
-	const labelName = String(feature?.get?.("name") || "");
-	const suffix = type === "logging_road" ? " (LR)" : "";
 	const a = getAgeOpacity("trails", feature as any);
 	const [r, g, b] = baseColor === "#8d6e63" ? [141, 110, 99] : baseColor === "#a35b20" ? [163, 91, 32] : [197, 123, 48];
 	return new Style({
@@ -34,18 +32,7 @@ const trailStyle = (feature?: FeatureLike) => {
 			color: `rgba(${r},${g},${b},${a})`,
 			width,
 			lineDash
-		}),
-		text:
-			labelName
-				? new TextStyle({
-						text: labelName + suffix,
-						font: "12px 'Inter', sans-serif",
-						fill: new Fill({ color: `rgba(255,255,255,${a})` }),
-						stroke: new Stroke({ color: `rgba(0,0,0,${0.6 * a})`, width: 3 }),
-						placement: "line",
-						overflow: true
-				  })
-				: undefined
+		})
 	});
 };
 

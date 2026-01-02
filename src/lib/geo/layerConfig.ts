@@ -229,7 +229,7 @@ export const layerConfigById: Record<LayerId, LayerConfig> = {
 	trails: {
 		file: "trails.geojson",
 		geometry: "LineString",
-		style: lineWithLabel("#f97316", 3.2, "name"),
+		style: line("#f97316", 3.2),
 		addable: true,
 		label: "Trails",
 		icon: "🛤️",

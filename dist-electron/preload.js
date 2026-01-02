@@ -15,6 +15,8 @@ electron_1.contextBridge.exposeInMainWorld("api", {
     copyToMedia: (baseDir, sourceAbsolutePath, targetFolderPath) => electron_1.ipcRenderer.invoke("media:copy", baseDir, sourceAbsolutePath, targetFolderPath),
     resolveMediaPath: (baseDir, relativePath) => electron_1.ipcRenderer.invoke("media:resolvePath", baseDir, relativePath),
     deleteFile: (absolutePath) => electron_1.ipcRenderer.invoke("media:deleteFile", absolutePath),
+    listMediaFolder: (baseDir, relativeFolderPath) => electron_1.ipcRenderer.invoke("media:listFolder", baseDir, relativeFolderPath),
+    importMediaFolder: (baseDir, sourceDirAbsolutePath, targetFolderPath) => electron_1.ipcRenderer.invoke("media:importFolder", baseDir, sourceDirAbsolutePath, targetFolderPath),
     projectCreateStructure: (baseDir, projectName) => electron_1.ipcRenderer.invoke("project:createStructure", baseDir, projectName),
     chooseFile: (filters) => electron_1.ipcRenderer.invoke("dialog:chooseFile", { filters }),
     chooseFiles: (filters) => electron_1.ipcRenderer.invoke("dialog:chooseFiles", { filters }),
