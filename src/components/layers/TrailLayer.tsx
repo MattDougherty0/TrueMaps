@@ -11,6 +11,7 @@ import type Feature from "ol/Feature";
 import type LineString from "ol/geom/LineString";
 import { v4 as uuidv4 } from "uuid";
 import { useVisibilityStore } from "../../state/visibility";
+import { useTrackVisibilityStore } from "../../state/trackVisibility";
 import FeatureForm from "../FeatureForm";
 import { useUserStore } from "../../state/user";
 import { shouldShowFeature, getAgeOpacity } from "../../lib/geo/filters";
@@ -54,10 +55,25 @@ export default function TrailLayer() {
 		if (!map || !projectPath) return;
 		const dataPath = propertyScopedGeoJSONPath("data/trails.geojson", activePropertyId);
 
+		// Style function that checks per-track visibility
+		const getTrailStyle = (feat: FeatureLike): Style | Style[] | undefined => {
+			if (!shouldShowFeature("trails", feat)) return [];
+			// Check per-track visibility using name as the stable identifier
+			const trackName = String(feat?.get?.("name") || "").trim();
+			if (trackName) {
+				const visibility = useTrackVisibilityStore.getState().trackVisibility;
+				// If explicitly set to false, hide the track
+				if (visibility[trackName] === false) {
+					return []; // Empty array = no rendering
+				}
+			}
+			return trailStyle(feat);
+		};
+
 		// Layer setup
 		const layer = new VectorLayer({
 			source: sourceRef.current,
-			style: (feat: FeatureLike) => (shouldShowFeature("trails", feat) ? trailStyle(feat) : undefined)
+			style: getTrailStyle
 		});
 		layerRef.current = layer;
 		map.addLayer(layer);
@@ -85,6 +101,11 @@ export default function TrailLayer() {
 				let changed = false;
 				const features = sourceRef.current.getFeatures() as Feature<LineString>[];
 				features.forEach((f, i) => {
+					// Ensure each feature has an ID
+					if (!(f as any).getId()) {
+						(f as any).setId(uuidv4());
+						changed = true;
+					}
 					if (!f.get("name")) {
 						f.set("name", `Trail ${i + 1}`);
 						changed = true;
@@ -93,6 +114,13 @@ export default function TrailLayer() {
 				if (changed) {
 					await persist();
 				}
+				// Register tracks for per-track visibility control - use name as ID for consistency
+				const trackInfos = features.map((f) => {
+					const name = String(f.get("name") || "Unnamed Track").trim();
+					return { id: name, name };
+				});
+				useTrackVisibilityStore.getState().registerTracks(trackInfos);
+				console.log("[TrailLayer] Registered tracks:", trackInfos.map(t => t.name));
 			} catch {
 				try {
 					await window.api.writeTextFile(projectPath, dataPath, emptyFeatureCollectionString());
@@ -212,7 +240,7 @@ export default function TrailLayer() {
 		};
 	}, [map, projectPath, activePropertyId]);
 
-	// Visibility binding
+	// Visibility binding - layer level and per-track level
 	useEffect(() => {
 		const layer = layerRef.current;
 		if (!layer) return;
@@ -221,10 +249,27 @@ export default function TrailLayer() {
 			const visible = useVisibilityStore.getState().isLayerVisible("trails");
 			layerRef.current.setVisible(visible);
 		};
+		const refreshLayer = () => {
+			// Force complete re-render
+			if (!layerRef.current || !map) return;
+			const visibility = useTrackVisibilityStore.getState().trackVisibility;
+			// Directly set style on each feature based on visibility
+			sourceRef.current.getFeatures().forEach((feat) => {
+				const trackName = String(feat.get("name") || "").trim();
+				if (trackName && visibility[trackName] === false) {
+					(feat as any).setStyle([]); // Hide
+				} else {
+					(feat as any).setStyle(undefined); // Use layer style
+				}
+			});
+			map.render();
+		};
 		updateVisibility();
 		const unsub = useVisibilityStore.subscribe(updateVisibility);
+		const unsubTracks = useTrackVisibilityStore.subscribe(refreshLayer);
 		return () => {
 			unsub();
+			unsubTracks();
 		};
 	}, []);
 

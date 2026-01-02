@@ -2,6 +2,7 @@ import { useState } from "react";
 import { layerConfigById, layerOrder } from "../lib/geo/layerConfig";
 import type { LayerId } from "../lib/geo/schema";
 import { useVisibilityStore } from "../state/visibility";
+import { useTrackVisibilityStore } from "../state/trackVisibility";
 import { shallow } from "zustand/shallow";
 import { colors, borderRadius, spacing, typography } from "../lib/theme";
 
@@ -53,7 +54,14 @@ export default function LegendPanel() {
 	const isVisible = useVisibilityStore((s) => s.isLayerVisible);
 	// Subscribe to preset and overrides so the legend rerenders immediately on changes
 	const [presetValue, overrides] = useVisibilityStore((s) => [s.preset, s.overrides], shallow);
+	
+	// Track visibility state
+	const tracks = useTrackVisibilityStore((s) => s.tracks);
+	const setTrackVisible = useTrackVisibilityStore((s) => s.setTrackVisible);
+	const setAllTracksVisible = useTrackVisibilityStore((s) => s.setAllTracksVisible);
+	
 	const [open, setOpen] = useState(false);
+	const [humanTracksOpen, setHumanTracksOpen] = useState(false);
 	const [openCategories, setOpenCategories] = useState<Record<CategoryKey, boolean>>(() => {
 		const initial: Record<CategoryKey, boolean> = {} as Record<CategoryKey, boolean>;
 		for (const cat of legendCategories) {
@@ -62,6 +70,10 @@ export default function LegendPanel() {
 		}
 		return initial;
 	});
+	
+	// Calculate if all tracks are visible for the "toggle all" checkbox
+	const allTracksVisible = tracks.length > 0 && tracks.every((t) => t.visible);
+	const someTracksVisible = tracks.some((t) => t.visible);
 
 	if (!open) {
 		return (
@@ -244,6 +256,101 @@ export default function LegendPanel() {
 											</div>
 										);
 									})}
+									{/* Human Tracks dropdown - only show in Terrain category */}
+									{category.key === "terrain" && tracks.length > 0 && (
+										<div style={{ 
+											marginTop: spacing.sm, 
+											border: `1px solid ${colors.border}`,
+											borderRadius: borderRadius.sm,
+											overflow: "hidden"
+										}}>
+											<div
+												style={{
+													width: "100%",
+													display: "flex",
+													alignItems: "center",
+													justifyContent: "space-between",
+													padding: `${spacing.sm} ${spacing.md}`,
+													background: colors.bgButton,
+													fontSize: typography.fontSize.sm,
+													color: colors.textPrimary
+												}}
+											>
+												<span style={{ display: "flex", alignItems: "center", gap: spacing.sm }}>
+													<input
+														type="checkbox"
+														checked={allTracksVisible}
+														ref={(el) => {
+															if (el) el.indeterminate = someTracksVisible && !allTracksVisible;
+														}}
+														onChange={(e) => {
+															e.stopPropagation();
+															setAllTracksVisible(e.target.checked);
+														}}
+														style={{ accentColor: colors.primary, cursor: "pointer" }}
+													/>
+													<span>🚶</span>
+													<span 
+														onClick={() => setHumanTracksOpen(!humanTracksOpen)}
+														style={{ cursor: "pointer" }}
+													>
+														Human Tracks ({tracks.length})
+													</span>
+												</span>
+												<span 
+													onClick={() => setHumanTracksOpen(!humanTracksOpen)}
+													style={{ 
+														fontSize: typography.fontSize.xs, 
+														color: colors.textLight,
+														cursor: "pointer",
+														padding: `${spacing.xs} ${spacing.sm}`
+													}}
+												>
+													{humanTracksOpen ? "▾" : "▸"}
+												</span>
+											</div>
+											{humanTracksOpen && (
+												<div style={{ 
+													padding: `${spacing.sm} ${spacing.md}`,
+													background: colors.bgSecondary,
+													display: "flex",
+													flexDirection: "column",
+													gap: spacing.xs,
+													maxHeight: 200,
+													overflowY: "auto"
+												}}>
+													{/* Individual track checkboxes */}
+													{tracks.map((track) => (
+														<div 
+															key={track.id} 
+															style={{ 
+																display: "flex", 
+																alignItems: "center", 
+																gap: spacing.sm 
+															}}
+														>
+															<input
+																type="checkbox"
+																checked={track.visible}
+																onChange={(e) => setTrackVisible(track.id, e.target.checked)}
+																style={{ accentColor: colors.primary, cursor: "pointer" }}
+															/>
+															<span style={{ 
+																fontSize: typography.fontSize.xs, 
+																color: colors.textPrimary,
+																overflow: "hidden",
+																textOverflow: "ellipsis",
+																whiteSpace: "nowrap",
+																maxWidth: 150
+															}} title={track.name}>
+																{track.name}
+															</span>
+														</div>
+													))}
+												</div>
+											)}
+										</div>
+									)}
 								</div>
 							) : null}
 						</div>
