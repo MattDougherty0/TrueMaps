@@ -15,6 +15,7 @@ import { useUserStore } from "../../state/user";
 import { shouldShowFeature, getAgeOpacity } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
 import { emptyFeatureCollectionString, propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
+import { createLazyLayerLoader } from "../../lib/perf/lazyLayerData";
 import { borderRadius, colors, spacing, typography } from "../../lib/theme";
 
 const makeSignStyle = (opacity: number) =>
@@ -56,8 +57,7 @@ export default function AnimalSignLayer() {
 		layerRef.current = layer;
 		map.addLayer(layer);
 
-		// Load existing
-		(async () => {
+		const reload = async () => {
 			try {
 				const text = await window.api.readTextFile(projectPath, dataPath);
 				const geojson = JSON.parse(text || "{\"type\":\"FeatureCollection\",\"features\":[]}");
@@ -74,7 +74,11 @@ export default function AnimalSignLayer() {
 					// ignore
 				}
 			}
-		})();
+		};
+		const lazy = createLazyLayerLoader("animal_sign", reload);
+		lazy.loadIfVisible();
+		const onReloadAll = () => lazy.onReloadAll();
+		window.addEventListener("layers:reload", onReloadAll);
 
 		const startDraw = () => {
 			if (drawRef.current) return;
@@ -109,7 +113,10 @@ export default function AnimalSignLayer() {
 		};
 		persistRef.current = persist;
 
-		const onStartNew = () => startDraw();
+		const onStartNew = () => {
+			lazy.requestData();
+			startDraw();
+		};
 		const select = new Select({ layers: [layer] as any });
 		selectRef.current = select;
 		map.addInteraction(select);
@@ -160,8 +167,19 @@ export default function AnimalSignLayer() {
 		window.addEventListener("delete-feature-animal_sign", onDelete);
 		window.addEventListener("start-new-animal-sign", onStartNew);
 
+		const updateVisibility = () => {
+			if (!layerRef.current) return;
+			const visible = useVisibilityStore.getState().isLayerVisible("animal_sign");
+			layerRef.current.setVisible(visible);
+			if (visible) lazy.loadIfVisible();
+		};
+		updateVisibility();
+		const unsubVisibility = useVisibilityStore.subscribe(updateVisibility);
+
 		return () => {
+			unsubVisibility();
 			window.removeEventListener("start-new-animal-sign", onStartNew);
+			window.removeEventListener("layers:reload", onReloadAll);
 			window.removeEventListener("layer:enable-modify:animal_sign", onEnable);
 			window.removeEventListener("layer:disable-modify:animal_sign", onDisable);
 			window.removeEventListener("layer:enable-modify:animal_sign", onEnable);
@@ -178,22 +196,6 @@ export default function AnimalSignLayer() {
 			layerRef.current = null;
 		};
 	}, [map, projectPath, activePropertyId]);
-
-	// Visibility binding
-	useEffect(() => {
-		const layer = layerRef.current;
-		if (!layer) return;
-		const updateVisibility = () => {
-			if (!layerRef.current) return;
-			const visible = useVisibilityStore.getState().isLayerVisible("animal_sign");
-			layerRef.current.setVisible(visible);
-		};
-		updateVisibility();
-		const unsub = useVisibilityStore.subscribe(updateVisibility);
-		return () => {
-			unsub();
-		};
-	}, []);
 
 	const onSubmit = async (values: Record<string, unknown>) => {
 		if (!projectPath || !pending) return;

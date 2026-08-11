@@ -16,6 +16,7 @@ import { useUserStore } from "../../state/user";
 import { shouldShowFeature, getAgeOpacity } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
 import { emptyFeatureCollectionString, propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
+import { createLazyLayerLoader } from "../../lib/perf/lazyLayerData";
 import { borderRadius, colors, spacing, typography } from "../../lib/theme";
 
 const makeHarvestStyle = (opacity: number) =>
@@ -58,8 +59,7 @@ export default function HarvestsLayer() {
 		layerRef.current = layer;
 		map.addLayer(layer);
 
-		// Load existing
-		(async () => {
+		const reload = async () => {
 			try {
 				const text = await window.api.readTextFile(projectPath, dataPath);
 				const geojson = JSON.parse(text || "{\"type\":\"FeatureCollection\",\"features\":[]}");
@@ -76,7 +76,11 @@ export default function HarvestsLayer() {
 					// ignore
 				}
 			}
-		})();
+		};
+		const lazy = createLazyLayerLoader("harvests", reload);
+		lazy.loadIfVisible();
+		const onReloadAll = () => lazy.onReloadAll();
+		window.addEventListener("layers:reload", onReloadAll);
 
 		const startDraw = () => {
 			if (drawRef.current) return;
@@ -112,7 +116,10 @@ export default function HarvestsLayer() {
 		};
 		persistRef.current = persist;
 
-		const onStartNew = () => startDraw();
+		const onStartNew = () => {
+			lazy.requestData();
+			startDraw();
+		};
 		const select = new Select({ layers: [layer] as any });
 		selectRef.current = select;
 		map.addInteraction(select);
@@ -162,8 +169,19 @@ export default function HarvestsLayer() {
 		window.addEventListener("delete-feature-harvests", onDelete);
 		window.addEventListener("start-new-harvest", onStartNew);
 
+		const updateVisibility = () => {
+			if (!layerRef.current) return;
+			const visible = useVisibilityStore.getState().isLayerVisible("harvests");
+			layerRef.current.setVisible(visible);
+			if (visible) lazy.loadIfVisible();
+		};
+		updateVisibility();
+		const unsubVisibility = useVisibilityStore.subscribe(updateVisibility);
+
 		return () => {
+			unsubVisibility();
 			window.removeEventListener("start-new-harvest", onStartNew);
+			window.removeEventListener("layers:reload", onReloadAll);
 			window.removeEventListener("layer:enable-modify:harvests", onEnable);
 			window.removeEventListener("layer:disable-modify:harvests", onDisable);
 			window.removeEventListener("layer:persist:harvests", onPersistEvt);
@@ -178,22 +196,6 @@ export default function HarvestsLayer() {
 			layerRef.current = null;
 		};
 	}, [map, projectPath, selectedHuntId, activePropertyId]);
-
-	// Visibility binding
-	useEffect(() => {
-		const layer = layerRef.current;
-		if (!layer) return;
-		const updateVisibility = () => {
-			if (!layerRef.current) return;
-			const visible = useVisibilityStore.getState().isLayerVisible("harvests");
-			layerRef.current.setVisible(visible);
-		};
-		updateVisibility();
-		const unsub = useVisibilityStore.subscribe(updateVisibility);
-		return () => {
-			unsub();
-		};
-	}, []);
 
 	const onSubmit = async (values: Record<string, unknown>) => {
 		if (!projectPath || !pending) return;

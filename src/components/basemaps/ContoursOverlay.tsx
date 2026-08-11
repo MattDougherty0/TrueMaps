@@ -32,7 +32,10 @@ export default function ContoursOverlay() {
 		layerRef.current = layer;
 		map.addLayer(layer);
 
+		let loaded = false;
 		const loadContours = async () => {
+			if (loaded || cancelled) return;
+			loaded = true;
 			try {
 				let text = "";
 				if (activePropertyId) {
@@ -53,14 +56,19 @@ export default function ContoursOverlay() {
 				source.clear();
 				source.addFeatures(features);
 			} catch (err) {
+				loaded = false;
 				console.error("Failed to load contours", err);
 			}
 		};
 
-		void loadContours();
+		if (useBasemapStore.getState().visible.contours) {
+			void loadContours();
+		}
 
 		const unsub = useBasemapStore.subscribe((s) => {
-			layer.setVisible(!!s.visible.contours);
+			const visible = !!s.visible.contours;
+			layer.setVisible(visible);
+			if (visible) void loadContours();
 		});
 
 		return () => {

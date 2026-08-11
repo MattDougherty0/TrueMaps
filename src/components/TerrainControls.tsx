@@ -48,11 +48,6 @@ export default function TerrainControls() {
                terrariumUrl: state.terrariumUrl
            }));
 
-           useEffect(() => {
-               // Ensure projects always open in 2D unless the user explicitly enables 3D.
-               setEnabled(false);
-           }, [setEnabled]);
-
 	useEffect(() => {
 		// Cleanup timeout on unmount
 		return () => {

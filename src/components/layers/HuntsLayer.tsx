@@ -18,6 +18,7 @@ import { shouldShowFeature, getAgeOpacity } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
 import { useVisibilityStore } from "../../state/visibility";
 import { emptyFeatureCollectionString, propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
+import { createLazyLayerLoader } from "../../lib/perf/lazyLayerData";
 import { borderRadius, colors, spacing, typography } from "../../lib/theme";
 
 const makeHuntStyle = (opacity: number) =>
@@ -79,8 +80,9 @@ export default function HuntsLayer() {
 				}
 			}
 		};
-		void reload();
-		const onReloadAll = () => void reload();
+		const lazy = createLazyLayerLoader("hunts", reload);
+		lazy.loadIfVisible();
+		const onReloadAll = () => lazy.onReloadAll();
 
 		const persist = async () => {
 			if (!projectPath) return;
@@ -147,7 +149,10 @@ export default function HuntsLayer() {
 			});
 		};
 
-		const onStartNew = () => startDraw();
+		const onStartNew = () => {
+			lazy.requestData();
+			startDraw();
+		};
 		window.addEventListener("start-new-hunt", onStartNew);
 
 		// selection for linking sightings/paths
@@ -208,6 +213,7 @@ export default function HuntsLayer() {
 			if (!layerRef.current) return;
 			const visible = useVisibilityStore.getState().isLayerVisible("hunts");
 			layerRef.current.setVisible(visible);
+			if (visible) lazy.loadIfVisible();
 		};
 		updateVisibility();
 		const unsubVisibility = useVisibilityStore.subscribe(updateVisibility);

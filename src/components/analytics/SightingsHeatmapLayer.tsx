@@ -74,13 +74,15 @@ export default function SightingsHeatmapLayer() {
 				// ignore
 			}
 		};
-		void load();
+		if (show) {
+			void load();
+		}
 
 		return () => {
 			if (layerRef.current) map.removeLayer(layerRef.current);
 			layerRef.current = null;
 		};
-	}, [map, projectPath, timeWindow]);
+	}, [map, projectPath, timeWindow, show]);
 
 	// toggle visibility reactively
 	useEffect(() => {

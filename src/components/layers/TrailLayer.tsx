@@ -18,6 +18,7 @@ import { shouldShowFeature, getAgeOpacity } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
 import { emptyFeatureCollectionString, propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
 import { borderRadius, colors, spacing, typography } from "../../lib/theme";
+import { createLazyLayerLoader } from "../../lib/perf/lazyLayerData";
 
 const trailStyle = (feature?: FeatureLike) => {
 	const type = feature?.get?.("trail_type") as string | undefined;
@@ -129,8 +130,9 @@ export default function TrailLayer() {
 				}
 			}
 		};
-		void reload();
-		const onReloadAll = () => void reload();
+		const lazy = createLazyLayerLoader("trails", reload);
+		lazy.loadIfVisible();
+		const onReloadAll = () => lazy.onReloadAll();
 
 		// Select + Modify for editing
 		const select = new Select({ layers: [layer] as any });
@@ -215,7 +217,10 @@ export default function TrailLayer() {
 			}
 		};
 
-		const onStartDraw = () => startDraw();
+		const onStartDraw = () => {
+			lazy.requestData();
+			startDraw();
+		};
 		const onDeleteSelected = () => void deleteSelected();
 		window.addEventListener("start-trail-draw", onStartDraw);
 		window.addEventListener("delete-selected-trail", onDeleteSelected);
@@ -228,6 +233,7 @@ export default function TrailLayer() {
 			if (!layerRef.current) return;
 			const visible = useVisibilityStore.getState().isLayerVisible("trails");
 			layerRef.current.setVisible(visible);
+			if (visible) lazy.loadIfVisible();
 		};
 		const refreshTrackStyles = () => {
 			// Style function already reads trackVisibility; force OL to re-evaluate it

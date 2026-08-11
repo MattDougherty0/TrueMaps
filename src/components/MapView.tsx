@@ -416,78 +416,92 @@ export default function MapView() {
 		let unsubscribeBasemap: (() => void) | null = null;
 		let unsubscribeApp: (() => void) | null = null;
 		let removeTileProgressListener: (() => void) | null = null;
-		try {
-			olCesium = new OLCesium({ map, target: mapRef.current });
-			// Grab OL-Cesium's internal VectorSynchronizer (best-effort; avoids extra imports/types).
+
+		const ensureOlCesium = () => {
+			if (olCesium || !mapRef.current || abort.cancelled) return olCesium;
 			try {
-				const syncs: any[] = ((olCesium as any).synchronizers_ as any[]) || [];
-				vectorSync =
-					syncs.find((s) => (s?.constructor?.name || "").toLowerCase().includes("vectorsynchronizer")) ||
-					null;
-			} catch {
-				vectorSync = null;
-			}
-			const scene = olCesium.getCesiumScene();
-			scene.screenSpaceCameraController.enableTilt = true;
-			scene.screenSpaceCameraController.minimumZoomDistance = 50;
-			scene.screenSpaceCameraController.maximumZoomDistance = 20000000;
-			scene.screenSpaceCameraController.enableCollisionDetection = true;
-			scene.screenSpaceCameraController.maximumPitch = CesiumMath.toRadians(initialTerrain.maxPitch);
-			scene.screenSpaceCameraController.inertiaSpin = 0.92;
-			scene.screenSpaceCameraController.inertiaTranslate = 0.9;
-			scene.screenSpaceCameraController.inertiaZoom = 0.85;
-			scene.screenSpaceCameraController.minimumPitch = CesiumMath.toRadians(-89.5);
-			// NOTE: depthTestAgainstTerrain can cause OL-Cesium-synchronized vector features
-			// (property boundary, points/lines/polys) to be hidden because they may render at
-			// ellipsoid height while terrain is above them. Keep overlays visible like onX.
-			scene.globe.depthTestAgainstTerrain = false;
-			scene.globe.enableLighting = false; // Disable lighting for better performance
-			scene.globe.showSkirts = false;
-			scene.globe.maximumScreenSpaceError = 2.5; // Lower quality = better performance
-			scene.requestRenderMode = true;
-			scene.maximumRenderTimeChange = Number.POSITIVE_INFINITY;
-			scene.globe.baseColor = CesiumGlobal.Color.BLACK; // Simple base when imagery fails
-			scene.globe.tileCacheSize = 100; // Reduce tile cache to save memory
-			scene.verticalExaggeration = initialTerrain.verticalExaggeration;
-			olCesium.setEnabled(initialTerrain.enabled);
-			setCesium(olCesium);
-			let lastTileProgress = -1;
-			const onTileProgress = (pending: number) => {
-				if (pending !== lastTileProgress) {
-					lastTileProgress = pending;
-					console.debug(`[terrain] Tile load progress: ${pending}`);
-				}
-			};
-			scene.globe.tileLoadProgressEvent.addEventListener(onTileProgress);
-			removeTileProgressListener = () => {
+				olCesium = new OLCesium({ map, target: mapRef.current });
 				try {
-					scene.globe.tileLoadProgressEvent.removeEventListener(onTileProgress);
+					const syncs: any[] = ((olCesium as any).synchronizers_ as any[]) || [];
+					vectorSync =
+						syncs.find((s) =>
+							(s?.constructor?.name || "").toLowerCase().includes("vectorsynchronizer")
+						) || null;
 				} catch {
-					// ignore
+					vectorSync = null;
 				}
-			};
-			const initialCamera = getCameraState();
-			applyCameraPose(olCesium, initialCamera, { animate: false });
-			void applyTerrainProvider(olCesium, initialTerrain, abort);
-			if (initialTerrain.enabled) {
+				const scene = olCesium.getCesiumScene();
+				scene.screenSpaceCameraController.enableTilt = true;
+				scene.screenSpaceCameraController.minimumZoomDistance = 50;
+				scene.screenSpaceCameraController.maximumZoomDistance = 20000000;
+				scene.screenSpaceCameraController.enableCollisionDetection = true;
+				scene.screenSpaceCameraController.maximumPitch = CesiumMath.toRadians(
+					getTerrainState().maxPitch
+				);
+				scene.screenSpaceCameraController.inertiaSpin = 0.92;
+				scene.screenSpaceCameraController.inertiaTranslate = 0.9;
+				scene.screenSpaceCameraController.inertiaZoom = 0.85;
+				scene.screenSpaceCameraController.minimumPitch = CesiumMath.toRadians(-89.5);
+				// NOTE: depthTestAgainstTerrain can hide OL-Cesium vectors at ellipsoid height.
+				scene.globe.depthTestAgainstTerrain = false;
+				scene.globe.enableLighting = false;
+				scene.globe.showSkirts = false;
+				scene.globe.maximumScreenSpaceError = 2.5;
+				scene.requestRenderMode = true;
+				scene.maximumRenderTimeChange = Number.POSITIVE_INFINITY;
+				scene.globe.baseColor = CesiumGlobal.Color.BLACK;
+				scene.globe.tileCacheSize = 100;
+				scene.verticalExaggeration = getTerrainState().verticalExaggeration;
+				olCesium.setEnabled(false);
+				setCesium(olCesium);
+				let lastTileProgress = -1;
+				const onTileProgress = (pending: number) => {
+					if (pending !== lastTileProgress) {
+						lastTileProgress = pending;
+						console.debug(`[terrain] Tile load progress: ${pending}`);
+					}
+				};
+				scene.globe.tileLoadProgressEvent.addEventListener(onTileProgress);
+				removeTileProgressListener = () => {
+					try {
+						scene.globe.tileLoadProgressEvent.removeEventListener(onTileProgress);
+					} catch {
+						// ignore
+					}
+				};
+				if (!unsubscribeBasemap) {
+					unsubscribeBasemap = useBasemapStore.subscribe(() => {
+						if (!olCesium || !olCesium.getEnabled()) return;
+						queueCesiumBasemapRebuild();
+					});
+				}
+				if (!unsubscribeApp) {
+					unsubscribeApp = useAppStore.subscribe(() => {
+						if (!olCesium || !olCesium.getEnabled()) return;
+						queueCesiumBasemapRebuild();
+					});
+				}
+			} catch (error) {
+				console.error("Failed to start Cesium overlay", error);
+				olCesium = null;
+			}
+			return olCesium;
+		};
+
+		// Defer Cesium until 3D is requested (default is 2D).
+		if (initialTerrain.enabled) {
+			ensureOlCesium();
+			if (olCesium) {
+				applyCameraPose(olCesium, getCameraState(), { animate: false });
+				void applyTerrainProvider(olCesium, initialTerrain, abort);
+				olCesium.setEnabled(true);
 				queueCesiumBasemapRebuild();
 			}
-			unsubscribeBasemap = useBasemapStore.subscribe(
-				() => {
-					if (!olCesium || !olCesium.getEnabled()) return;
-					queueCesiumBasemapRebuild();
-				}
-			);
-			unsubscribeApp = useAppStore.subscribe(
-				() => {
-					if (!olCesium || !olCesium.getEnabled()) return;
-					queueCesiumBasemapRebuild();
-				}
-			);
-		} catch (error) {
-			console.error("Failed to start Cesium overlay", error);
-			olCesium = null;
 		}
+
+		let pendingCameraSync = false;
+		let suppressCameraSync = false;
+		let cameraChangedAttached = false;
 
 		const onJump = (evt: Event) => {
 			const detail = (evt as CustomEvent<{ lon: number; lat: number; zoom?: number }>).detail;
@@ -553,7 +567,38 @@ export default function MapView() {
 		};
 		window.addEventListener("map:set-camera-pose", onCameraPoseEvent);
 
+		const onCesiumCameraChanged = () => {
+			if (pendingCameraSync || suppressCameraSync) return;
+			pendingCameraSync = true;
+			requestAnimationFrame(() => {
+				pendingCameraSync = false;
+				if (suppressCameraSync || !olCesium || !olCesium.getEnabled()) return;
+				const scene = olCesium.getCesiumScene();
+				const camera = scene.camera;
+				const cartographic = scene.globe.ellipsoid.cartesianToCartographic(camera.position);
+				if (!cartographic) return;
+				const headingDeg = ((CesiumMath.toDegrees(camera.heading) % 360) + 360) % 360;
+				const pitchDeg = Math.min(85, Math.max(5, -CesiumMath.toDegrees(camera.pitch)));
+				const height = Math.max(40, cartographic.height);
+				setCameraState({
+					heading: headingDeg,
+					pitch: pitchDeg,
+					height
+				});
+			});
+		};
+
 		const unsubscribeTerrain = subscribeTerrain((state, previous) => {
+			if (state.enabled && !olCesium) {
+				ensureOlCesium();
+				if (olCesium && !cameraChangedAttached) {
+					olCesium.getCesiumScene().camera.changed.addEventListener(onCesiumCameraChanged);
+					cameraChangedAttached = true;
+				}
+				if (olCesium) {
+					void applyTerrainProvider(olCesium, state, abort);
+				}
+			}
 			if (!olCesium) return;
 			const scene = olCesium.getCesiumScene();
 
@@ -623,30 +668,9 @@ export default function MapView() {
 			}
 		});
 
-		let pendingCameraSync = false;
-		let suppressCameraSync = false;
-		const onCesiumCameraChanged = () => {
-			if (pendingCameraSync || suppressCameraSync) return;
-			pendingCameraSync = true;
-			requestAnimationFrame(() => {
-				pendingCameraSync = false;
-				if (suppressCameraSync || !olCesium || !olCesium.getEnabled()) return;
-				const scene = olCesium.getCesiumScene();
-				const camera = scene.camera;
-				const cartographic = scene.globe.ellipsoid.cartesianToCartographic(camera.position);
-				if (!cartographic) return;
-				const headingDeg = ((CesiumMath.toDegrees(camera.heading) % 360) + 360) % 360;
-				const pitchDeg = Math.min(85, Math.max(5, -CesiumMath.toDegrees(camera.pitch)));
-				const height = Math.max(40, cartographic.height);
-				setCameraState({
-					heading: headingDeg,
-					pitch: pitchDeg,
-					height
-				});
-			});
-		};
 		if (olCesium) {
 			olCesium.getCesiumScene().camera.changed.addEventListener(onCesiumCameraChanged);
+			cameraChangedAttached = true;
 		}
 
 		return () => {

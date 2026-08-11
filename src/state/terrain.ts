@@ -39,7 +39,8 @@ const initialTerrainUrl = cleanString(envTerrainUrl);
 const initialTerrarium = cleanString(envTerrariumUrl) ?? DEFAULT_TERRARIUM_TEMPLATE;
 
 const terrainStore = createStore<TerrainState>((set) => ({
-	enabled: Boolean(initialIonToken || initialTerrainUrl || initialTerrarium),
+	// Always start in 2D. Cesium/OLCesium is constructed on first enable.
+	enabled: false,
 	verticalExaggeration: 1.6,
 	maxPitch: 85,
 	ionToken: initialIonToken,

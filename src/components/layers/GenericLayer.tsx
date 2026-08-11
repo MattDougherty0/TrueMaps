@@ -19,6 +19,7 @@ import { shouldShowFeature } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
 import { propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
 import { borderRadius, colors, spacing, typography } from "../../lib/theme";
+import { enqueueLayerLoad } from "../../lib/perf/layerLoadQueue";
 
 export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 	const cfg = layerConfigById[layerId];
@@ -157,7 +158,33 @@ export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 				}
 			}
 		};
-		void reload();
+
+		let dataLoaded = false;
+		let loadInFlight: Promise<void> | null = null;
+		const ensureData = (force = false) => {
+			if (!force && dataLoaded) return;
+			if (!force && loadInFlight) return;
+			dataLoaded = true;
+			loadInFlight = reload().finally(() => {
+				loadInFlight = null;
+			});
+		};
+		const requestData = (force = false) => {
+			if (force) {
+				ensureData(true);
+				return;
+			}
+			if (layerId === "property_boundary") {
+				ensureData();
+				return;
+			}
+			enqueueLayerLoad(async () => ensureData());
+		};
+
+		const initiallyVisible = useVisibilityStore.getState().isLayerVisible(layerId);
+		if (initiallyVisible) {
+			requestData();
+		}
 
 		// interactions
 		if (cfg.selectable !== false) {
@@ -239,11 +266,18 @@ export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 		const delEvt = `delete-feature-${layerId}`;
 		const reloadEvt = `layer:reload:${layerId}`;
 		const persistEvt = `layer:persist:${layerId}`;
-		const onAdd = () => startDraw();
+		const onAdd = () => {
+			requestData();
+			startDraw();
+		};
 		const onDel = () => void deleteSelected();
-		const onReload = () => void reload();
+		const onReload = () => requestData(true);
 		const onPersist = () => void persist();
-		const onReloadAll = () => void reload();
+		const onReloadAll = () => {
+			if (dataLoaded || useVisibilityStore.getState().isLayerVisible(layerId)) {
+				requestData(true);
+			}
+		};
 		window.addEventListener(addEvt, onAdd);
 		window.addEventListener(delEvt, onDel);
 		window.addEventListener(reloadEvt, onReload);
@@ -255,6 +289,7 @@ export default function GenericLayer({ layerId }: { layerId: LayerId }) {
 			if (!layerRef.current) return;
 			const visible = useVisibilityStore.getState().isLayerVisible(layerId);
 			layerRef.current.setVisible(visible);
+			if (visible) requestData();
 		};
 		
 		// Set initial visibility

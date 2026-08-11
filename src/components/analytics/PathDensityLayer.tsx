@@ -84,13 +84,15 @@ export default function PathDensityLayer() {
 				// ignore
 			}
 		};
-		void load();
+		if (show) {
+			void load();
+		}
 
 		return () => {
 			if (layerRef.current) map.removeLayer(layerRef.current);
 			layerRef.current = null;
 		};
-	}, [map, projectPath, timeWindow]);
+	}, [map, projectPath, timeWindow, show]);
 
 	useEffect(() => {
 		if (layerRef.current) layerRef.current.setVisible(show);

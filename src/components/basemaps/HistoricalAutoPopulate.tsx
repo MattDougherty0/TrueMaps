@@ -11,8 +11,6 @@ import {
 export default function HistoricalAutoPopulate() {
 	const { projectPath, pendingView, hasBoundary, properties, activePropertyId } = useAppStore();
 	const addEntry = useHistoricalImagery((s) => s.addEntry);
-	const entries = useHistoricalImagery((s) => s.entries);
-	const setEnabled = useHistoricalImagery((s) => s.setEnabled);
 	const setSelected = useHistoricalImagery((s) => s.setSelected);
 	const seededRef = useRef(false);
 
@@ -132,12 +130,12 @@ export default function HistoricalAutoPopulate() {
 					}
 				}
 
-				// Enable and select latest by year (prefer Wayback)
+				// Seed catalog + preferred selection only — do not auto-enable.
+				// Enabling kicks off remote tile fetches on top of topo/hillshade.
 				const waybackYears = releases
 					.map((r) => Number((r.releaseDate || "").slice(0, 4)))
 					.filter((v) => Number.isFinite(v)) as number[];
 				const latestYear = Math.max(...(waybackYears.length ? waybackYears : [0]), ...naipYears);
-				setEnabled(true);
 				const latestWayback = releases
 					.map((r) => ({ id: `wayback_${r.releaseDate}`, year: Number((r.releaseDate || "").slice(0, 4)) }))
 					.filter((r) => r.year === latestYear)[0];

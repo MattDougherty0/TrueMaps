@@ -16,6 +16,7 @@ import { shouldShowFeature, getAgeOpacity } from "../../lib/geo/filters";
 import { useSelectionStore } from "../../state/selection";
 import { useVisibilityStore } from "../../state/visibility";
 import { emptyFeatureCollectionString, propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
+import { createLazyLayerLoader } from "../../lib/perf/lazyLayerData";
 import { borderRadius, colors, spacing, typography } from "../../lib/theme";
 
 const makeSightingStyle = (opacity: number) =>
@@ -80,8 +81,9 @@ export default function SightingsLayer() {
 				}
 			}
 		};
-		void reload();
-		const onReloadAll = () => void reload();
+		const lazy = createLazyLayerLoader("animal_sightings", reload);
+		lazy.loadIfVisible();
+		const onReloadAll = () => lazy.onReloadAll();
 
 		const startDraw = () => {
 			const activeUser = useUserStore.getState().activeUser;
@@ -121,7 +123,10 @@ export default function SightingsLayer() {
 		};
 		persistRef.current = persist;
 
-		const onStartNew = () => startDraw();
+		const onStartNew = () => {
+			lazy.requestData();
+			startDraw();
+		};
 		const select = new Select({ layers: [layer] as any });
 		selectRef.current = select;
 		map.addInteraction(select);
@@ -178,6 +183,7 @@ export default function SightingsLayer() {
 			if (!layerRef.current) return;
 			const visible = useVisibilityStore.getState().isLayerVisible("animal_sightings");
 			layerRef.current.setVisible(visible);
+			if (visible) lazy.loadIfVisible();
 		};
 		updateVisibility();
 		const unsubVisibility = useVisibilityStore.subscribe(updateVisibility);

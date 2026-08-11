@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { layerConfigById } from "../lib/geo/layerConfig";
 
 export type ProjectProperty = {
 	id: string;
@@ -182,31 +181,21 @@ const useAppStore = create<AppState>((set) => ({
 				nextActiveId = props[0]?.id || null;
 			}
 
-			// Ensure all expected data files exist (older projects may be missing newer layers)
-			try {
-				for (const cfg of Object.values(layerConfigById)) {
-					try {
-						await window.api.readTextFile(projectDir, `data/${cfg.file}`);
-					} catch (e) {
-						// seed empty FeatureCollection
-						const emptyFC = JSON.stringify({ type: "FeatureCollection", features: [] }, null, 2);
-						await window.api.writeTextFile(projectDir, `data/${cfg.file}`, emptyFC);
-					}
-				}
-			} catch {
-				// non-fatal; layers will also auto-seed on demand
-			}
+			// Layers auto-seed missing GeoJSON on first visible load — skip the sequential
+			// open-time probe of every data/*.geojson file (was a blocking IPC storm).
 
-			// Seed additional boundary files for multi-property projects
+			// Seed additional boundary files for multi-property projects in parallel
 			try {
-				for (const p of props) {
-					try {
-						await window.api.readTextFile(projectDir, `data/${p.boundaryFile}`);
-					} catch {
-						const emptyFC = JSON.stringify({ type: "FeatureCollection", features: [] }, null, 2);
-						await window.api.writeTextFile(projectDir, `data/${p.boundaryFile}`, emptyFC);
-					}
-				}
+				await Promise.all(
+					props.map(async (p) => {
+						try {
+							await window.api.readTextFile(projectDir, `data/${p.boundaryFile}`);
+						} catch {
+							const emptyFC = JSON.stringify({ type: "FeatureCollection", features: [] }, null, 2);
+							await window.api.writeTextFile(projectDir, `data/${p.boundaryFile}`, emptyFC);
+						}
+					})
+				);
 			} catch {
 				// non-fatal
 			}

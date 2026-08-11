@@ -16,6 +16,7 @@ import { useUserStore } from "../../state/user";
 import { useSelectionStore } from "../../state/selection";
 import { useVisibilityStore } from "../../state/visibility";
 import { emptyFeatureCollectionString, propertyScopedGeoJSONPath } from "../../lib/geo/propertyScopedFiles";
+import { createLazyLayerLoader } from "../../lib/perf/lazyLayerData";
 import { borderRadius, colors, spacing, typography } from "../../lib/theme";
 
 const pathStyle = (feature?: Feature<LineString>) =>
@@ -101,8 +102,9 @@ export default function AnimalPathsLayer() {
 				}
 			}
 		};
-		void reload();
-		const onReloadAll = () => void reload();
+		const lazy = createLazyLayerLoader("animal_paths", reload);
+		lazy.loadIfVisible();
+		const onReloadAll = () => lazy.onReloadAll();
 
 		const persist = async () => {
 			if (!projectPath) return;
@@ -137,7 +139,10 @@ export default function AnimalPathsLayer() {
 			});
 		};
 
-		const onStartNew = () => startDraw();
+		const onStartNew = () => {
+			lazy.requestData();
+			startDraw();
+		};
 		const select = new Select({ layers: [layer] as any });
 		selectRef.current = select;
 		map.addInteraction(select);
@@ -182,6 +187,7 @@ export default function AnimalPathsLayer() {
 			if (!layerRef.current) return;
 			const visible = useVisibilityStore.getState().isLayerVisible("animal_paths");
 			layerRef.current.setVisible(visible);
+			if (visible) lazy.loadIfVisible();
 		};
 		updateVisibility();
 		const unsubVisibility = useVisibilityStore.subscribe(updateVisibility);

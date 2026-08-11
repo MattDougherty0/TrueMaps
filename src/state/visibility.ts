@@ -43,7 +43,8 @@ const signLayers: LayerId[] = [
 const huntLayers: LayerId[] = ["hunts", "harvests", "animal_sightings", "animal_paths", "stands", "trail_cameras"];
 
 export const useVisibilityStore = create<VisibilityState>((set, get) => ({
-	preset: "everything",
+	// Terrain-first: fewer GeoJSON loads on open; "Everything" is one click away.
+	preset: "terrain",
 	timeWindow: "all",
 	setPreset: (p) => set({ preset: p }),
 	setTimeWindow: (w) => set({ timeWindow: w }),
