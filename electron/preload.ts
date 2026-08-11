@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld("api", {
 		ipcRenderer.invoke("media:copy", baseDir, sourceAbsolutePath, targetFolderPath),
 	resolveMediaPath: (baseDir: string, relativePath: string): Promise<string> =>
 		ipcRenderer.invoke("media:resolvePath", baseDir, relativePath),
+	hashMediaFiles: (baseDir: string, mediaPaths: string[]): Promise<Array<{ path: string; sha256: string }>> =>
+		ipcRenderer.invoke("media:hashFiles", baseDir, mediaPaths),
 	deleteFile: (absolutePath: string): Promise<boolean> =>
 		ipcRenderer.invoke("media:deleteFile", absolutePath),
 	listMediaFolder: (baseDir: string, relativeFolderPath: string): Promise<string[]> =>
@@ -36,6 +38,34 @@ contextBridge.exposeInMainWorld("api", {
 		targetFolderPath: string
 	): Promise<{ folder: string; files: string[] }> =>
 		ipcRenderer.invoke("media:importFolder", baseDir, sourceDirAbsolutePath, targetFolderPath),
+	importTrailCameraMedia: (
+		baseDir: string,
+		sourceDirAbsolutePath: string,
+		targetFolderPath: string,
+		knownHashes: string[]
+	): Promise<{
+		files: Array<{
+			name: string;
+			path: string;
+			type: "image" | "video";
+			sha256: string;
+			size: number;
+			capturedAt: string;
+		}>;
+		skippedDuplicates: number;
+		skippedUnsupported: number;
+		failedFiles: string[];
+	}> => ipcRenderer.invoke("media:importTrailCamera", baseDir, sourceDirAbsolutePath, targetFolderPath, knownHashes),
+	onTrailCameraImportProgress: (
+		listener: (progress: { processed: number; total: number; fileName: string; stage: string }) => void
+	): (() => void) => {
+		const handler = (
+			_event: Electron.IpcRendererEvent,
+			progress: { processed: number; total: number; fileName: string; stage: string }
+		) => listener(progress);
+		ipcRenderer.on("media:importTrailCameraProgress", handler);
+		return () => ipcRenderer.removeListener("media:importTrailCameraProgress", handler);
+	},
 	projectCreateStructure: (baseDir: string, projectName: string): Promise<boolean> =>
 		ipcRenderer.invoke("project:createStructure", baseDir, projectName),
 	chooseFile: (filters?: { name: string; extensions: string[] }[]): Promise<string | null> =>

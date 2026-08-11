@@ -11,6 +11,7 @@ declare global {
 			chooseDirectory: () => Promise<string | null>;
 			readTextFile: (baseDir: string, relativePath: string) => Promise<string>;
 			writeTextFile: (baseDir: string, relativePath: string, content: string) => Promise<boolean>;
+			atomicWriteTextFile: (baseDir: string, relativePath: string, content: string) => Promise<boolean>;
 			writeBinaryFile: (
 				baseDir: string,
 				relativePath: string,
@@ -18,6 +19,7 @@ declare global {
 			) => Promise<boolean>;
 			copyToMedia: (baseDir: string, sourceAbsolutePath: string, targetFolderPath?: string) => Promise<string>;
 			resolveMediaPath: (baseDir: string, relativePath: string) => Promise<string>;
+			hashMediaFiles: (baseDir: string, mediaPaths: string[]) => Promise<Array<{ path: string; sha256: string }>>;
 			deleteFile: (absolutePath: string) => Promise<boolean>;
 			listMediaFolder: (baseDir: string, relativeFolderPath: string) => Promise<string[]>;
 			importMediaFolder: (
@@ -25,6 +27,27 @@ declare global {
 				sourceDirAbsolutePath: string,
 				targetFolderPath: string
 			) => Promise<{ folder: string; files: string[] }>;
+			importTrailCameraMedia: (
+				baseDir: string,
+				sourceDirAbsolutePath: string,
+				targetFolderPath: string,
+				knownHashes: string[]
+			) => Promise<{
+				files: Array<{
+					name: string;
+					path: string;
+					type: "image" | "video";
+					sha256: string;
+					size: number;
+					capturedAt: string;
+				}>;
+				skippedDuplicates: number;
+				skippedUnsupported: number;
+				failedFiles: string[];
+			}>;
+			onTrailCameraImportProgress: (
+				listener: (progress: { processed: number; total: number; fileName: string; stage: string }) => void
+			) => () => void;
 			projectCreateStructure: (baseDir: string, projectName: string) => Promise<boolean>;
 			chooseFile: (filters?: { name: string; extensions: string[] }[]) => Promise<string | null>;
 			chooseFiles: (filters?: { name: string; extensions: string[] }[]) => Promise<string[]>;

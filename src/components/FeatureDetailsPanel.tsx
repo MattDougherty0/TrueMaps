@@ -24,6 +24,7 @@ export default function FeatureDetailsPanel() {
 	const props = feature?.getProperties?.() || {};
 	const featureName = typeof props.name === "string" && props.name.trim().length > 0 ? props.name.trim() : null;
 	const mediaFolder = typeof props.media_folder === "string" ? props.media_folder.trim() : "";
+	const cameraSiteId = typeof props.camera_site_id === "string" ? props.camera_site_id.trim() : "";
 
 	const canUseGenericPersist = true; // for layers managed by GenericLayer
 	const canDelete =
@@ -268,7 +269,7 @@ export default function FeatureDetailsPanel() {
 						}}
 					>
 						{Object.entries(props)
-							.filter(([k]) => !["geometry", "imported_by", "imported_at", "created_by", "created_at"].includes(k))
+							.filter(([k]) => !["geometry", "imported_by", "imported_at", "created_by", "created_at", "camera_site_id"].includes(k))
 							.slice(0, 10)
 							.map(([k, v]) => (
 								<div key={k} style={{ display: "contents" }}>
@@ -316,33 +317,32 @@ export default function FeatureDetailsPanel() {
 								<div style={{ fontWeight: typography.fontWeight.semibold, fontSize: typography.fontSize.sm, color: colors.textPrimary }}>
 									Camera Media
 								</div>
-								<div style={subtleText}>{cameraFiles ? `${cameraFiles.length} file(s)` : "Not linked"}</div>
+								<div style={subtleText}>{mediaFolder ? `${cameraFiles?.length || 0} legacy file(s)` : "Managed in Media"}</div>
 							</div>
-							<div style={{ marginTop: spacing.sm, fontSize: typography.fontSize.sm, color: colors.textSecondary }}>
-								Folder:{" "}
-								<code style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: colors.textPrimary }}>
-									{mediaFolder || "—"}
-								</code>
-							</div>
+							{mediaFolder ? (
+								<div style={{ marginTop: spacing.sm, fontSize: typography.fontSize.sm, color: colors.textSecondary }}>
+									Legacy folder:{" "}
+									<code style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: colors.textPrimary }}>
+										{mediaFolder}
+									</code>
+								</div>
+							) : null}
 							<div style={{ display: "flex", gap: spacing.sm, flexWrap: "wrap", marginTop: spacing.md }}>
 								<button
-									onClick={async () => {
-										if (!projectPath) return;
-										if (typeof window.api.importMediaFolder !== "function") {
-											window.alert("Media folder import is not available in this build.");
-											return;
-										}
-										const sourceDir = await window.api.chooseDirectory();
-										if (!sourceDir) return;
-										const baseName = (featureName || "camera").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-										const target = `media/trail_cameras/${baseName || "camera"}`;
-										const res = await window.api.importMediaFolder(projectPath, sourceDir, target);
-										feature.set("media_folder", res.folder);
-										window.dispatchEvent(new Event(`layer:persist:${layerId}`));
+									onClick={() => {
+										window.dispatchEvent(
+											new CustomEvent("trail-camera-media:open", {
+												detail: {
+													cameraName: featureName || undefined,
+													cameraSiteId: cameraSiteId || undefined
+												}
+											})
+										);
+										useSelectionStore.getState().setSelected(null);
 									}}
 									style={primaryButton}
 								>
-									Link folder…
+									Open / import media
 								</button>
 								{mediaFolder && typeof window.api.openPath === "function" ? (
 									<button

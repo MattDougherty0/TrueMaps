@@ -541,10 +541,7 @@ export const layerSchemas: Record<LayerId, JsonSchema> = {
 		properties: {
 			name: { type: "string", title: "Camera Name" },
 			camera_type: { type: "string", enum: ["trail", "cell"], enumNames: ["Trail Cam", "Cell Cam"], title: "Type" },
-			media_folder: {
-				type: "string",
-				title: "Media Folder (project-relative, e.g. media/trail_cameras/cam_01)"
-			},
+			area_name: { type: "string", title: "Area (for example, Camp or Leacock)" },
 			last_checked: dateSchema,
 			notes: { type: "string", title: "Notes" }
 		},

@@ -39,6 +39,7 @@ const path = __importStar(require("path"));
 const fs = __importStar(require("fs/promises"));
 const fssync = __importStar(require("fs"));
 const fs_1 = require("fs");
+const crypto_1 = require("crypto");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument = require("pdfkit");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -60,6 +61,7 @@ const isDev = !electron_1.app.isPackaged;
 const mbtilesCache = new Map();
 const TRANSPARENT_TILE = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=", "base64");
 let activeProjectDir = null;
+const activeTrailCameraImports = new Set();
 function createWindow() {
     const win = new electron_1.BrowserWindow({
         width: 1280,
@@ -89,6 +91,51 @@ function resolveInsideBase(baseDir, relativePath) {
     const rel = path.relative(base, target);
     if (rel.startsWith("..") || path.isAbsolute(rel)) {
         throw new Error("Path escapes base directory");
+    }
+    return target;
+}
+async function sha256File(filePath) {
+    return new Promise((resolve, reject) => {
+        const hash = (0, crypto_1.createHash)("sha256");
+        const stream = (0, fs_1.createReadStream)(filePath);
+        stream.on("error", reject);
+        stream.on("data", (chunk) => hash.update(chunk));
+        stream.on("end", () => resolve(hash.digest("hex")));
+    });
+}
+async function availableDestination(targetDir, fileName) {
+    const parsed = path.parse(fileName);
+    let candidate = path.join(targetDir, fileName);
+    let suffix = 1;
+    while (fssync.existsSync(candidate)) {
+        candidate = path.join(targetDir, `${parsed.name}_${suffix}${parsed.ext}`);
+        suffix += 1;
+    }
+    return candidate;
+}
+async function ensureDirectoryInsideBase(baseDir, relativePath) {
+    const base = path.resolve(baseDir);
+    await fs.mkdir(base, { recursive: true });
+    const baseStat = await fs.lstat(base);
+    if (baseStat.isSymbolicLink())
+        throw new Error("Media directory cannot be a symbolic link");
+    const target = resolveInsideBase(base, relativePath);
+    const relative = path.relative(base, target);
+    let current = base;
+    for (const segment of relative.split(path.sep).filter(Boolean)) {
+        current = path.join(current, segment);
+        try {
+            const stat = await fs.lstat(current);
+            if (stat.isSymbolicLink())
+                throw new Error("Media import path cannot contain symbolic links");
+            if (!stat.isDirectory())
+                throw new Error("Media import path contains a file");
+        }
+        catch (error) {
+            if (error.code !== "ENOENT")
+                throw error;
+            await fs.mkdir(current);
+        }
     }
     return target;
 }
@@ -390,6 +437,28 @@ electron_1.app.whenReady().then(() => {
         const target = resolveInsideBase(baseDir, relativePath);
         return target;
     });
+    electron_1.ipcMain.handle("media:hashFiles", async (_event, baseDir, mediaPaths) => {
+        const mediaDir = path.resolve(baseDir, "media");
+        const realMediaDir = await fs.realpath(mediaDir);
+        const results = [];
+        for (const mediaPath of Array.isArray(mediaPaths) ? mediaPaths : []) {
+            try {
+                const target = resolveInsideBase(mediaDir, mediaPath);
+                const realTarget = await fs.realpath(target);
+                const relative = path.relative(realMediaDir, realTarget);
+                if (relative.startsWith("..") || path.isAbsolute(relative))
+                    continue;
+                const stat = await fs.lstat(realTarget);
+                if (!stat.isFile())
+                    continue;
+                results.push({ path: mediaPath, sha256: await sha256File(realTarget) });
+            }
+            catch {
+                // Missing legacy catalog entries are ignored rather than blocking an import.
+            }
+        }
+        return results;
+    });
     electron_1.ipcMain.handle("media:deleteFile", async (_event, absolutePath) => {
         try {
             await fs.unlink(absolutePath);
@@ -475,6 +544,118 @@ electron_1.app.whenReady().then(() => {
         };
         await walk(path.resolve(sourceDirAbsolutePath));
         return { folder: targetFolderPath, files: copied };
+    });
+    electron_1.ipcMain.handle("media:importTrailCamera", async (event, baseDir, sourceDirAbsolutePath, targetFolderPath, knownHashes) => {
+        const importKey = path.resolve(baseDir);
+        if (activeTrailCameraImports.has(importKey)) {
+            throw new Error("A trail camera folder import is already running for this project.");
+        }
+        activeTrailCameraImports.add(importKey);
+        try {
+            const mediaDir = path.resolve(baseDir, "media");
+            const sourceDir = path.resolve(sourceDirAbsolutePath);
+            const targetDir = await ensureDirectoryInsideBase(mediaDir, targetFolderPath);
+            const imageExts = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"]);
+            const videoExts = new Set([".mp4", ".mov", ".avi"]);
+            const known = new Set(Array.isArray(knownHashes) ? knownHashes.filter(Boolean) : []);
+            const seenThisImport = new Set();
+            const sourceFiles = [];
+            let skippedUnsupported = 0;
+            const walk = async (dir) => {
+                const entries = await fs.readdir(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                    const absolutePath = path.join(dir, entry.name);
+                    if (entry.isSymbolicLink()) {
+                        skippedUnsupported += 1;
+                        continue;
+                    }
+                    if (entry.isDirectory()) {
+                        await walk(absolutePath);
+                        continue;
+                    }
+                    const ext = path.extname(entry.name).toLowerCase();
+                    if (!imageExts.has(ext) && !videoExts.has(ext)) {
+                        skippedUnsupported += 1;
+                        continue;
+                    }
+                    sourceFiles.push(absolutePath);
+                }
+            };
+            await walk(sourceDir);
+            event.sender.send("media:importTrailCameraProgress", {
+                processed: 0,
+                total: sourceFiles.length,
+                fileName: "",
+                stage: "copying"
+            });
+            const imported = [];
+            const failedFiles = [];
+            let skippedDuplicates = 0;
+            let processed = 0;
+            for (const sourcePath of sourceFiles) {
+                try {
+                    const hash = await sha256File(sourcePath);
+                    if (known.has(hash) || seenThisImport.has(hash)) {
+                        skippedDuplicates += 1;
+                        processed += 1;
+                        event.sender.send("media:importTrailCameraProgress", {
+                            processed,
+                            total: sourceFiles.length,
+                            fileName: path.basename(sourcePath),
+                            stage: "duplicate"
+                        });
+                        continue;
+                    }
+                    seenThisImport.add(hash);
+                    const stat = await fs.stat(sourcePath);
+                    const parsed = path.parse(sourcePath);
+                    const isAvi = parsed.ext.toLowerCase() === ".avi";
+                    const outputName = isAvi ? `${parsed.name}.mp4` : parsed.base;
+                    const destination = await availableDestination(targetDir, outputName);
+                    event.sender.send("media:importTrailCameraProgress", {
+                        processed,
+                        total: sourceFiles.length,
+                        fileName: parsed.base,
+                        stage: isAvi ? "converting" : "copying"
+                    });
+                    if (isAvi) {
+                        await convertVideoToMP4(sourcePath, destination);
+                    }
+                    else {
+                        await fs.copyFile(sourcePath, destination);
+                    }
+                    const relativePath = path.relative(mediaDir, destination).split(path.sep).join("/");
+                    imported.push({
+                        name: path.basename(destination),
+                        path: relativePath,
+                        type: videoExts.has(parsed.ext.toLowerCase()) ? "video" : "image",
+                        sha256: hash,
+                        size: stat.size,
+                        capturedAt: stat.mtime.toISOString()
+                    });
+                }
+                catch (error) {
+                    console.warn("[media:importTrailCamera] Failed to import", sourcePath, error);
+                    failedFiles.push(path.relative(sourceDir, sourcePath).split(path.sep).join("/"));
+                }
+                processed += 1;
+                event.sender.send("media:importTrailCameraProgress", {
+                    processed,
+                    total: sourceFiles.length,
+                    fileName: path.basename(sourcePath),
+                    stage: "complete"
+                });
+            }
+            return {
+                files: imported,
+                skippedDuplicates,
+                skippedUnsupported,
+                failedFiles
+            };
+        }
+        finally {
+            activeTrailCameraImports.delete(importKey);
+        }
     });
     electron_1.ipcMain.handle("project:createStructure", async (_event, baseDir, projectName) => {
         const dirs = ["data", "tiles", "media", "exports"];

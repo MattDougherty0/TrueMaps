@@ -14,6 +14,7 @@ export interface PlatformAPI {
 	readExternalFile(absolutePath: string): Promise<string>;
 	copyToMedia(baseDir: string, sourceAbsolutePath: string, targetFolderPath?: string): Promise<string>;
 	resolveMediaPath(baseDir: string, relativePath: string): Promise<string>;
+	hashMediaFiles?(baseDir: string, mediaPaths: string[]): Promise<Array<{ path: string; sha256: string }>>;
 	deleteFile(absolutePath: string): Promise<boolean>;
 	listMediaFolder?(baseDir: string, relativeFolderPath: string): Promise<string[]>;
 	importMediaFolder?(
@@ -21,6 +22,27 @@ export interface PlatformAPI {
 		sourceDirAbsolutePath: string,
 		targetFolderPath: string
 	): Promise<{ folder: string; files: string[] }>;
+	importTrailCameraMedia?(
+		baseDir: string,
+		sourceDirAbsolutePath: string,
+		targetFolderPath: string,
+		knownHashes: string[]
+	): Promise<{
+		files: Array<{
+			name: string;
+			path: string;
+			type: "image" | "video";
+			sha256: string;
+			size: number;
+			capturedAt: string;
+		}>;
+		skippedDuplicates: number;
+		skippedUnsupported: number;
+		failedFiles: string[];
+	}>;
+	onTrailCameraImportProgress?(
+		listener: (progress: { processed: number; total: number; fileName: string; stage: string }) => void
+	): () => void;
 	projectCreateStructure(baseDir: string, projectName: string): Promise<boolean>;
 	setActiveProject(baseDir: string): void;
 	printPdf?(baseDir: string, payload: any): Promise<string | null>;
