@@ -221,7 +221,25 @@ export default function TrailLayer() {
 		window.addEventListener("delete-selected-trail", onDeleteSelected);
 		window.addEventListener("layers:reload", onReloadAll);
 
+		// Visibility binding - layer level and per-track level
+		// Must live in this effect so subscriptions attach after the layer exists
+		// (a separate mount-only effect races and never subscribes).
+		const updateVisibility = () => {
+			if (!layerRef.current) return;
+			const visible = useVisibilityStore.getState().isLayerVisible("trails");
+			layerRef.current.setVisible(visible);
+		};
+		const refreshTrackStyles = () => {
+			// Style function already reads trackVisibility; force OL to re-evaluate it
+			layer.changed();
+		};
+		updateVisibility();
+		const unsubVisibility = useVisibilityStore.subscribe(updateVisibility);
+		const unsubTracks = useTrackVisibilityStore.subscribe(refreshTrackStyles);
+
 		return () => {
+			unsubVisibility();
+			unsubTracks();
 			window.removeEventListener("layer:enable-modify:trails", onEnable);
 			window.removeEventListener("layer:disable-modify:trails", onDisable);
 			window.removeEventListener("layer:persist:trails", onPersistEvt);
@@ -239,39 +257,6 @@ export default function TrailLayer() {
 			persistRef.current = async () => {};
 		};
 	}, [map, projectPath, activePropertyId]);
-
-	// Visibility binding - layer level and per-track level
-	useEffect(() => {
-		const layer = layerRef.current;
-		if (!layer) return;
-		const updateVisibility = () => {
-			if (!layerRef.current) return;
-			const visible = useVisibilityStore.getState().isLayerVisible("trails");
-			layerRef.current.setVisible(visible);
-		};
-		const refreshLayer = () => {
-			// Force complete re-render
-			if (!layerRef.current || !map) return;
-			const visibility = useTrackVisibilityStore.getState().trackVisibility;
-			// Directly set style on each feature based on visibility
-			sourceRef.current.getFeatures().forEach((feat) => {
-				const trackName = String(feat.get("name") || "").trim();
-				if (trackName && visibility[trackName] === false) {
-					(feat as any).setStyle([]); // Hide
-				} else {
-					(feat as any).setStyle(undefined); // Use layer style
-				}
-			});
-			map.render();
-		};
-		updateVisibility();
-		const unsub = useVisibilityStore.subscribe(updateVisibility);
-		const unsubTracks = useTrackVisibilityStore.subscribe(refreshLayer);
-		return () => {
-			unsub();
-			unsubTracks();
-		};
-	}, []);
 
 	const handleSubmit = async (values: Record<string, unknown>) => {
 		if (!pending) return;
