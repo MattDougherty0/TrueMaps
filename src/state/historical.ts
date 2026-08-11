@@ -9,6 +9,8 @@ export type HistoricalEntry = {
 	// For ArcGIS ImageServer sources (e.g., NAIP time-enabled)
 	arcgisImageUrl?: string; // .../arcgis/rest/services/.../ImageServer
 	timeParam?: string; // e.g., "2019-01-01,2019-12-31"
+	/** Mosaic catalog filter for ImageServers that are not time-enabled (e.g. USGS NAIP `Year = 2022`). */
+	mosaicWhere?: string;
 	// For ArcGIS MapServer tiled sources
 	arcgisMapUrl?: string; // .../arcgis/rest/services/.../MapServer
 	type?: "xyz" | "arcgis-image" | "arcgis-map";
@@ -34,6 +36,7 @@ export const useHistoricalImagery = create<HistoricalState>((set) => ({
 			id: "usgs_latest",
 			label: "USGS Imagery (Latest)",
 			year: new Date().getFullYear(),
+			type: "xyz",
 			urlTemplate:
 				"https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
 			attribution: "USGS"

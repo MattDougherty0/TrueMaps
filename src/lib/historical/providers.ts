@@ -1,126 +1,141 @@
-type WaybackRelease = {
+export type WaybackRelease = {
 	releaseDate: string; // e.g., "2018-05-21"
-	releaseId?: string | number;
+	releaseNum: number;
 };
 
-export async function fetchWaybackReleasesForLocation(
-	lon: number,
-	lat: number
-): Promise<WaybackRelease[]> {
-	// Esri Wayback API commonly supports a simple location query; attempt the common variants.
-	const candidates = [
-		`https://wayback-api.arcgis.com/wayback?location=${lon},${lat}`,
-		`https://wayback-api.arcgis.com/wayback?lon=${lon}&lat=${lat}`
-	];
-	for (const url of candidates) {
-		try {
-			const res = await fetch(url);
-			if (!res.ok) continue;
-			const json = await res.json();
-			// Normalize a few likely shapes
-			const releases: WaybackRelease[] =
-				Array.isArray(json?.releases)
-					? json.releases
-					: Array.isArray(json)
-					? json
-					: [];
-			const parsed = releases
-				.map((r: any) => ({
-					releaseDate: (r.releaseDate || r.release_date || r.date || "").slice(0, 10),
-					releaseId: r.releaseId || r.release_id || r.id
-				}))
-				.filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.releaseDate));
-			if (parsed.length > 0) return parsed;
-		} catch {
-			// try next
-		}
+type WaybackConfigEntry = {
+	itemTitle?: string;
+	itemURL?: string;
+	layerIdentifier?: string;
+};
+
+const WAYBACK_CONFIG_URL =
+	"https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json";
+const WAYBACK_TILE_BASE =
+	"https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile";
+
+export const USGS_NAIP_IMAGE_SERVER =
+	"https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer";
+
+function releaseDateFromTitle(title: string | undefined): string | null {
+	const match = (title || "").match(/(20\d{2}-\d{2}-\d{2})/);
+	return match ? match[1] : null;
+}
+
+/** All Wayback releases from Esri's official config, newest first. */
+export async function fetchAllWaybackReleases(): Promise<WaybackRelease[]> {
+	const res = await fetch(WAYBACK_CONFIG_URL);
+	if (!res.ok) throw new Error(`Wayback config HTTP ${res.status}`);
+	const json = (await res.json()) as Record<string, WaybackConfigEntry>;
+	const releases: WaybackRelease[] = [];
+	for (const [key, value] of Object.entries(json || {})) {
+		const releaseNum = Number(key);
+		const releaseDate = releaseDateFromTitle(value?.itemTitle);
+		if (!Number.isFinite(releaseNum) || !releaseDate) continue;
+		releases.push({ releaseDate, releaseNum });
 	}
-	// Fallback: a small curated set of known global release dates
-	return [
-		{ releaseDate: "2014-08-26" },
-		{ releaseDate: "2016-02-05" },
-		{ releaseDate: "2018-05-21" },
-		{ releaseDate: "2020-06-01" },
-		{ releaseDate: "2022-08-01" }
-	];
+	releases.sort((a, b) => b.releaseDate.localeCompare(a.releaseDate));
+	return releases;
+}
+
+/** Keep the newest release within each calendar year (keeps the picker usable). */
+export function pickLatestWaybackReleasePerYear(releases: WaybackRelease[]): WaybackRelease[] {
+	const byYear = new Map<number, WaybackRelease>();
+	for (const release of releases) {
+		const year = Number(release.releaseDate.slice(0, 4));
+		if (!Number.isFinite(year) || byYear.has(year)) continue;
+		byYear.set(year, release);
+	}
+	return Array.from(byYear.values()).sort((a, b) => b.releaseDate.localeCompare(a.releaseDate));
+}
+
+/**
+ * Load Wayback releases for a location.
+ * Uses Esri's official config and keeps the newest release per calendar year
+ * so the picker stays usable (~one option per year back to 2014).
+ */
+export async function fetchWaybackReleasesForLocation(
+	_lon: number,
+	_lat: number
+): Promise<WaybackRelease[]> {
+	const all = await fetchAllWaybackReleases();
+	return pickLatestWaybackReleasePerYear(all);
 }
 
 export function buildWaybackTileUrlTemplate(release: WaybackRelease): string {
-	// Prefer date-based parameter; many deployments accept ?release=YYYY-MM-DD
-	if (release.releaseDate) {
-		return `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?release=${release.releaseDate}`;
-	}
-	// Fallback to ID-based if available
-	if (release.releaseId !== undefined) {
-		return `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?releaseID=${release.releaseId}`;
-	}
-	// Last resort: return latest without pinning
-	return `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}`;
+	// Official Wayback WMTS/MapServer path embeds releaseNum before z/y/x.
+	return `${WAYBACK_TILE_BASE}/${release.releaseNum}/{z}/{y}/{x}`;
 }
 
-export function generateNaipYearTemplates(
-	years: number[]
-): { label: string; year: number; arcgisImageUrl: string; timeParam: string; type: "arcgis-image" }[] {
-	return years.map((y) => ({
-		label: `NAIP ${y}`,
-		year: y,
-		// Use USGS NAIP service (USDA service at naip-usda.arcgis.com is not resolving)
-		arcgisImageUrl: "https://imagery.nationalmap.gov/arcgis/rest/services/USGSNAIPImagery/ImageServer",
-		// Time extent for NAIP year; many deployments accept ISO date range.
-		timeParam: `${y}-01-01,${y}-12-31`,
-		type: "arcgis-image"
-	}));
-}
-
-type ArcgisServiceList = {
-	folders?: string[];
-	services?: Array<{ name: string; type: "MapServer" | "ImageServer" | string }>;
-};
-
-async function listArcgisServices(baseUrl: string): Promise<Array<{ name: string; type: string }>> {
+export async function fetchNaipYearsForLocation(lon: number, lat: number): Promise<number[]> {
+	const delta = 0.08;
+	const params = new URLSearchParams({
+		geometry: `${lon - delta},${lat - delta},${lon + delta},${lat + delta}`,
+		geometryType: "esriGeometryEnvelope",
+		inSR: "4326",
+		spatialRel: "esriSpatialRelIntersects",
+		where: "Category = 1",
+		outFields: "Year",
+		returnGeometry: "false",
+		returnDistinctValues: "true",
+		orderByFields: "Year",
+		f: "json"
+	});
 	try {
-		const url = `${baseUrl.replace(/\/+$/, "")}?f=json`;
-		const res = await fetch(url);
+		const res = await fetch(`${USGS_NAIP_IMAGE_SERVER}/query?${params.toString()}`);
 		if (!res.ok) return [];
-		const json = (await res.json()) as ArcgisServiceList;
-		const services = Array.isArray(json?.services) ? json.services : [];
-		return services.map((s) => ({ name: s.name, type: s.type }));
+		const json = await res.json();
+		const years = (Array.isArray(json?.features) ? json.features : [])
+			.map((f: any) => Number(f?.attributes?.Year))
+			.filter((y: number) => Number.isFinite(y));
+		return Array.from(new Set<number>(years)).sort((a, b) => b - a);
 	} catch {
 		return [];
 	}
 }
 
-export async function discoverPaArcgisImageryCandidates(): Promise<
-	Array<{ label: string; year: number; url: string; isImageServer: boolean }>
-> {
-	// Explore common PA hosts
-	const hosts = [
-		"https://imagery.nationalmap.gov/arcgis/rest/services", // USGS NAIP (already handled, but safe)
-		"https://nrcsgeoservices.sc.egov.usda.gov/arcgis/rest/services", // NHAP (already handled)
-		"https://imagery.pasda.psu.edu/arcgis/rest/services"
-		// OA host often blocks/changes; avoid by default:
-		// "https://arcgisserver.oa.pa.gov/arcgis/rest/services"
-	];
-	const patterns = [/imagery/i, /ortho/i, /pamap/i, /naip/i, /doq/i];
-	const results: Array<{ label: string; year: number; url: string; isImageServer: boolean }> = [];
-	for (const host of hosts) {
-		const services = await listArcgisServices(host);
-		for (const svc of services) {
-			if (!patterns.some((p) => p.test(svc.name))) continue;
-			// Try to extract a 4-digit year from the service name
-			const match = svc.name.match(/(19|20)\d{2}/);
-			const year = match ? Number(match[0]) : NaN;
-			if (!Number.isFinite(year)) continue;
-			const url = `${host.replace(/\/+$/, "")}/${svc.name}/${svc.type}`;
-			results.push({
-				label: `${svc.name.split("/").pop() || svc.name}`,
-				year,
-				url,
-				isImageServer: /ImageServer$/i.test(url)
-			});
-		}
-	}
-	return results;
+export function generateNaipYearTemplates(
+	years: number[]
+): {
+	label: string;
+	year: number;
+	arcgisImageUrl: string;
+	mosaicWhere: string;
+	type: "arcgis-image";
+}[] {
+	return years.map((y) => ({
+		label: `NAIP ${y}`,
+		year: y,
+		arcgisImageUrl: USGS_NAIP_IMAGE_SERVER,
+		// USGS NAIP is not time-enabled; filter mosaics by catalog Year attribute.
+		mosaicWhere: `Year = ${y}`,
+		type: "arcgis-image"
+	}));
 }
 
+/** Curated statewide PA orthos known to cover western/central PA (not county-only layers). */
+export function getPaStatewideImageryEntries(): Array<{
+	label: string;
+	year: number;
+	url: string;
+	isImageServer: boolean;
+}> {
+	const base = "https://imagery.pasda.psu.edu/arcgis/rest/services";
+	return [
+		{
+			label: "PEMA Imagery 2018–2020",
+			year: 2020,
+			url: `${base}/PEMAImagery2018_2020/MapServer`,
+			isImageServer: false
+		},
+		{
+			// Non-cache PEMAImagery2021_2023 returns blank tiles unless layers=show:0;
+			// the cache service renders correctly with OpenLayers TileArcGISRest defaults.
+			label: "PEMA Imagery 2021–2023",
+			year: 2023,
+			url: `${base}/PEMAImagery2021_2023cache/MapServer`,
+			isImageServer: false
+		}
+	];
+}
 

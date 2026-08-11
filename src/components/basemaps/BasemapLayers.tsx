@@ -4,7 +4,6 @@ import TileLayer from "ol/layer/Tile";
 import ImageLayer from "ol/layer/Image";
 import XYZ from "ol/source/XYZ";
 import TileArcGISRest from "ol/source/TileArcGISRest";
-import ImageArcGISRest from "ol/source/ImageArcGISRest";
 import { mbtilesUrl } from "../../lib/mbtiles/client";
 import { useBasemapStore } from "../../state/basemaps";
 import useAppStore from "../../state/store";
@@ -125,8 +124,8 @@ export default function BasemapLayers() {
 			// Reset both visibility
 			tileLayer.setVisible(false);
 			imageLayer.setVisible(false);
-			// XYZ
-			if (entry.type === "xyz" && entry.urlTemplate) {
+			// XYZ (also accept urlTemplate when type was omitted by older entries)
+			if ((entry.type === "xyz" || (!entry.type && entry.urlTemplate)) && entry.urlTemplate) {
 				const src = new XYZ({
 					url: entry.urlTemplate,
 					attributions: entry.attribution || "Historical Imagery",
@@ -153,9 +152,17 @@ export default function BasemapLayers() {
 			// Use TileArcGISRest for full map coverage (tiles entire service extent)
 			// instead of ImageArcGISRest which only covers current view extent
 			if ((entry.type === "arcgis-image" || entry.arcgisImageUrl) && entry.arcgisImageUrl) {
-				const params: any = {};
+				const params: Record<string, string> = {};
 				if (entry.timeParam) {
 					params.TIME = entry.timeParam;
+				}
+				if (entry.mosaicWhere) {
+					params.mosaicRule = JSON.stringify({
+						mosaicMethod: "esriMosaicAttribute",
+						where: entry.mosaicWhere,
+						sortField: "Year",
+						ascending: false
+					});
 				}
 				// TileArcGISRest works with ImageServer exportImage and provides full coverage
 				const src = new TileArcGISRest({
