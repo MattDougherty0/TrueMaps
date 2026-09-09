@@ -26,6 +26,9 @@ export type MediaFile = {
 	travelDirection?: string;
 	trashedAt?: string;
 	originalPath?: string;
+	sourcePath?: string;
+	sourceRelativePath?: string;
+	sourceDeletedAt?: string;
 	createdAt: string;
 	updatedAt: string;
 };
@@ -61,11 +64,23 @@ export type CameraImportSession = {
 	failedFiles: string[];
 };
 
+export type StoredCameraSite = {
+	id: string;
+	name: string;
+	propertyId: string | null;
+	areaName: string | null;
+	coordinates: [number, number] | null;
+};
+
+export const fileNeedsReview = (file: MediaFile): boolean =>
+	!file.trashedAt && !file.classification;
+
 type MediaState = {
 	folders: MediaFolder[];
 	files: MediaFile[];
 	knownDeer: KnownDeer[];
 	importSessions: CameraImportSession[];
+	cameraSites: StoredCameraSite[];
 	currentFolderPath: string; // empty string = root
 	selectedFile: MediaFile | null;
 	viewerOpen: boolean;
@@ -83,6 +98,7 @@ type MediaState = {
 	addKnownDeer: (deer: KnownDeer) => void;
 	updateKnownDeer: (id: string, updates: Partial<KnownDeer>) => void;
 	addImportSession: (session: CameraImportSession) => void;
+	addCameraSite: (site: StoredCameraSite) => void;
 	setSelectedFile: (file: MediaFile | null) => void;
 	setViewerOpen: (open: boolean) => void;
 	loadFromProject: (projectPath: string) => Promise<void>;
@@ -97,6 +113,7 @@ export const useMediaStore = create<MediaState>((set, get) => ({
 	files: [],
 	knownDeer: [],
 	importSessions: [],
+	cameraSites: [],
 	currentFolderPath: "",
 	selectedFile: null,
 	viewerOpen: false,
@@ -146,6 +163,12 @@ export const useMediaStore = create<MediaState>((set, get) => ({
 			)
 		})),
 	addImportSession: (session) => set((s) => ({ importSessions: [...s.importSessions, session] })),
+	addCameraSite: (site) =>
+		set((s) => ({
+			cameraSites: s.cameraSites.some((existing) => existing.id === site.id)
+				? s.cameraSites.map((existing) => (existing.id === site.id ? site : existing))
+				: [...s.cameraSites, site]
+		})),
 	setSelectedFile: (file) => set({ selectedFile: file }),
 	setViewerOpen: (open) => set({ viewerOpen: open }),
 	loadFromProject: async (projectPath: string) => {
@@ -156,21 +179,23 @@ export const useMediaStore = create<MediaState>((set, get) => ({
 				files?: MediaFile[];
 				knownDeer?: KnownDeer[];
 				importSessions?: CameraImportSession[];
+				cameraSites?: StoredCameraSite[];
 			};
 			set({
 				folders: data.folders || [],
 				files: data.files || [],
 				knownDeer: data.knownDeer || [],
-				importSessions: data.importSessions || []
+				importSessions: data.importSessions || [],
+				cameraSites: data.cameraSites || []
 			});
 		} catch {
 			// File doesn't exist yet, start fresh
-			set({ folders: [], files: [], knownDeer: [], importSessions: [] });
+			set({ folders: [], files: [], knownDeer: [], importSessions: [], cameraSites: [] });
 		}
 	},
 	saveToProject: async (projectPath: string) => {
-		const { folders, files, knownDeer, importSessions } = get();
-		const data = { version: 2, folders, files, knownDeer, importSessions };
+		const { folders, files, knownDeer, importSessions, cameraSites } = get();
+		const data = { version: 3, folders, files, knownDeer, importSessions, cameraSites };
 		const content = JSON.stringify(data, null, 2);
 		saveQueue = saveQueue
 			.catch(() => {

@@ -157,6 +157,9 @@ export const webAPI: PlatformAPI = {
 	async deleteFile(): Promise<boolean> {
 		return false;
 	},
+	async deleteTrailCameraSource(): Promise<{ deleted: boolean; status: "deleted" | "missing" | "unsafe" | "error" }> {
+		return { deleted: false, status: "missing" };
+	},
 
 	async listMediaFolder(): Promise<string[]> {
 		// Not supported in web mode yet.

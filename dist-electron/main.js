@@ -94,6 +94,20 @@ function resolveInsideBase(baseDir, relativePath) {
     }
     return target;
 }
+function isPathInside(parent, child) {
+    const rel = path.relative(parent, child);
+    return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+async function resolvedPathInside(parent, candidate) {
+    try {
+        const parentReal = await fs.realpath(parent);
+        const candidateReal = await fs.realpath(candidate);
+        return isPathInside(parentReal, candidateReal) ? candidateReal : null;
+    }
+    catch {
+        return null;
+    }
+}
 async function sha256File(filePath) {
     return new Promise((resolve, reject) => {
         const hash = (0, crypto_1.createHash)("sha256");
@@ -468,6 +482,56 @@ electron_1.app.whenReady().then(() => {
             return false;
         }
     });
+    electron_1.ipcMain.handle("media:deleteTrailCameraSource", async (_event, payload) => {
+        const projectPath = path.resolve(payload.projectPath || "");
+        const sourceRoot = path.resolve(payload.sourceRoot || "");
+        if (!projectPath || !sourceRoot)
+            return { deleted: false, status: "unsafe" };
+        let sourceRootReal;
+        try {
+            sourceRootReal = await fs.realpath(sourceRoot);
+            const rootStat = await fs.stat(sourceRootReal);
+            if (!rootStat.isDirectory())
+                return { deleted: false, status: "missing" };
+        }
+        catch {
+            return { deleted: false, status: "missing" };
+        }
+        if (isPathInside(projectPath, sourceRootReal)) {
+            return { deleted: false, status: "unsafe" };
+        }
+        const relative = (payload.sourceRelativePath || "").replace(/\\/g, "/").replace(/^\/+/, "");
+        if (relative.includes(".."))
+            return { deleted: false, status: "unsafe" };
+        const candidates = [
+            payload.sourcePath ? path.resolve(payload.sourcePath) : "",
+            relative ? path.resolve(sourceRootReal, ...relative.split("/").filter(Boolean)) : ""
+        ].filter(Boolean);
+        let target = null;
+        for (const candidate of candidates) {
+            target = await resolvedPathInside(sourceRootReal, candidate);
+            if (target)
+                break;
+        }
+        if (!target)
+            return { deleted: false, status: "missing" };
+        if (isPathInside(projectPath, target))
+            return { deleted: false, status: "unsafe" };
+        try {
+            const stat = await fs.lstat(target);
+            if (!stat.isFile() || stat.isSymbolicLink())
+                return { deleted: false, status: "unsafe" };
+            await fs.unlink(target);
+            return { deleted: true, status: "deleted" };
+        }
+        catch (error) {
+            const code = error.code;
+            if (code === "ENOENT")
+                return { deleted: false, status: "missing" };
+            console.warn("[media:deleteTrailCameraSource] Failed to delete", target, error);
+            return { deleted: false, status: "error" };
+        }
+    });
     electron_1.ipcMain.handle("media:listFolder", async (_event, baseDir, relativeFolderPath) => {
         // relativeFolderPath is project-relative, e.g. "media/trail_cameras/cam_01"
         const mediaDir = path.resolve(baseDir, "media");
@@ -631,7 +695,9 @@ electron_1.app.whenReady().then(() => {
                         type: videoExts.has(parsed.ext.toLowerCase()) ? "video" : "image",
                         sha256: hash,
                         size: stat.size,
-                        capturedAt: stat.mtime.toISOString()
+                        capturedAt: stat.mtime.toISOString(),
+                        sourcePath,
+                        sourceRelativePath: path.relative(sourceDir, sourcePath).split(path.sep).join("/")
                     });
                 }
                 catch (error) {

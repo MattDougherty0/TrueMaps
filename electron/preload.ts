@@ -30,6 +30,15 @@ contextBridge.exposeInMainWorld("api", {
 		ipcRenderer.invoke("media:hashFiles", baseDir, mediaPaths),
 	deleteFile: (absolutePath: string): Promise<boolean> =>
 		ipcRenderer.invoke("media:deleteFile", absolutePath),
+	deleteTrailCameraSource: (
+		payload: {
+			projectPath: string;
+			sourceRoot: string;
+			sourcePath?: string;
+			sourceRelativePath?: string;
+		}
+	): Promise<{ deleted: boolean; status: "deleted" | "missing" | "unsafe" | "error" }> =>
+		ipcRenderer.invoke("media:deleteTrailCameraSource", payload),
 	listMediaFolder: (baseDir: string, relativeFolderPath: string): Promise<string[]> =>
 		ipcRenderer.invoke("media:listFolder", baseDir, relativeFolderPath),
 	importMediaFolder: (
@@ -51,6 +60,8 @@ contextBridge.exposeInMainWorld("api", {
 			sha256: string;
 			size: number;
 			capturedAt: string;
+			sourcePath: string;
+			sourceRelativePath: string;
 		}>;
 		skippedDuplicates: number;
 		skippedUnsupported: number;

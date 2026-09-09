@@ -16,6 +16,12 @@ export interface PlatformAPI {
 	resolveMediaPath(baseDir: string, relativePath: string): Promise<string>;
 	hashMediaFiles?(baseDir: string, mediaPaths: string[]): Promise<Array<{ path: string; sha256: string }>>;
 	deleteFile(absolutePath: string): Promise<boolean>;
+	deleteTrailCameraSource?(payload: {
+		projectPath: string;
+		sourceRoot: string;
+		sourcePath?: string;
+		sourceRelativePath?: string;
+	}): Promise<{ deleted: boolean; status: "deleted" | "missing" | "unsafe" | "error" }>;
 	listMediaFolder?(baseDir: string, relativeFolderPath: string): Promise<string[]>;
 	importMediaFolder?(
 		baseDir: string,
@@ -35,6 +41,8 @@ export interface PlatformAPI {
 			sha256: string;
 			size: number;
 			capturedAt: string;
+			sourcePath?: string;
+			sourceRelativePath?: string;
 		}>;
 		skippedDuplicates: number;
 		skippedUnsupported: number;
