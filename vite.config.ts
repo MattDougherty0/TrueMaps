@@ -4,9 +4,10 @@ import cesium from "vite-plugin-cesium";
 import path from "node:path";
 
 export default defineConfig({
+	base: "./",
 	plugins: [react(), cesium()],
 	define: {
-		CESIUM_BASE_URL: JSON.stringify("/cesium")
+		CESIUM_BASE_URL: JSON.stringify("./cesium/")
 	},
 	resolve: {
 		alias: {

@@ -75,13 +75,16 @@ function createWindow() {
         show: false
     });
     win.on("ready-to-show", () => win.show());
+    win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
+        console.error("Renderer failed to load", { errorCode, errorDescription, validatedURL });
+    });
     if (isDev) {
         const url = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173";
         void win.loadURL(url);
         win.webContents.openDevTools({ mode: "detach" });
     }
     else {
-        const indexPath = path.join(__dirname, "../dist/index.html");
+        const indexPath = path.join(electron_1.app.getAppPath(), "dist", "index.html");
         void win.loadFile(indexPath);
     }
 }
