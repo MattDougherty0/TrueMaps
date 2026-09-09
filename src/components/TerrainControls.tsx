@@ -287,8 +287,8 @@ export default function TerrainControls() {
 				</span>
 				<input
 					type="range"
-					min={0.5}
-					max={8}
+					min={0.8}
+					max={4}
 					step={0.1}
 					value={verticalExaggeration}
 					onChange={handleExaggerationChange}
@@ -365,7 +365,7 @@ export default function TerrainControls() {
 				</label>
 			</div>
 			<div style={helperTextStyle}>
-				Toggle 3D to tilt the map like onX. Use the slider to exaggerate hills and valleys for easier terrain reading.
+				Toggle 3D to tilt the map. Keep exaggeration near 1.3× so ridges look natural instead of stretched.
 			</div>
 			{!ionToken && !terrainUrl && !terrariumUrl ? (
 				<div style={{ ...helperTextStyle, color: colors.error }}>

@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { useTrackVisibilityStore } from "../state/trackVisibility";
 import { borderRadius, colors, spacing, typography } from "../lib/theme";
 
 export default function HumanTracksPanel() {
+	const [tracksOpen, setTracksOpen] = useState(false);
 	const tracks = useTrackVisibilityStore((s) => s.tracks);
 	const setTrackVisible = useTrackVisibilityStore((s) => s.setTrackVisible);
 	const setAllTracksVisible = useTrackVisibilityStore((s) => s.setAllTracksVisible);
@@ -21,29 +23,57 @@ export default function HumanTracksPanel() {
 				color: colors.textPrimary
 			}}
 		>
-			<label
+			<div
 				style={{
 					display: "flex",
 					alignItems: "center",
-					gap: spacing.sm,
-					cursor: tracks.length ? "pointer" : "default",
-					fontWeight: typography.fontWeight.semibold
+					justifyContent: "space-between",
+					gap: spacing.sm
 				}}
 			>
-				<input
-					type="checkbox"
-					checked={allTracksVisible}
-					disabled={!tracks.length}
-					ref={(el) => {
-						if (el) el.indeterminate = someTracksVisible && !allTracksVisible;
+				<label
+					style={{
+						display: "flex",
+						alignItems: "center",
+						gap: spacing.sm,
+						cursor: tracks.length ? "pointer" : "default",
+						fontWeight: typography.fontWeight.semibold,
+						minWidth: 0
 					}}
-					onChange={(event) => setAllTracksVisible(event.target.checked)}
-					style={{ accentColor: colors.primary, cursor: tracks.length ? "pointer" : "default" }}
-				/>
-				<span>🚶</span>
-				<span>Human Tracks{tracks.length ? ` (${tracks.length})` : ""}</span>
-			</label>
-			{tracks.length ? (
+				>
+					<input
+						type="checkbox"
+						checked={allTracksVisible}
+						disabled={!tracks.length}
+						ref={(el) => {
+							if (el) el.indeterminate = someTracksVisible && !allTracksVisible;
+						}}
+						onChange={(event) => setAllTracksVisible(event.target.checked)}
+						style={{ accentColor: colors.primary, cursor: tracks.length ? "pointer" : "default" }}
+					/>
+					<span>🚶</span>
+					<span>Human Tracks{tracks.length ? ` (${tracks.length})` : ""}</span>
+				</label>
+				{tracks.length ? (
+					<button
+						type="button"
+						onClick={() => setTracksOpen((open) => !open)}
+						aria-expanded={tracksOpen}
+						title={tracksOpen ? "Hide individual tracks" : "Show individual tracks"}
+						style={{
+							border: "none",
+							background: "transparent",
+							color: colors.textMuted,
+							cursor: "pointer",
+							fontSize: typography.fontSize.xs,
+							padding: `${spacing.xs} ${spacing.sm}`
+						}}
+					>
+						{tracksOpen ? "▾" : "▸"}
+					</button>
+				) : null}
+			</div>
+			{tracks.length && tracksOpen ? (
 				<div
 					style={{
 						marginTop: spacing.md,
@@ -84,11 +114,12 @@ export default function HumanTracksPanel() {
 						</label>
 					))}
 				</div>
-			) : (
+			) : null}
+			{!tracks.length ? (
 				<div style={{ marginTop: spacing.sm, fontSize: typography.fontSize.xs, color: colors.textMuted }}>
 					No tracks loaded
 				</div>
-			)}
+			) : null}
 		</div>
 	);
 }

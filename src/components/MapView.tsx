@@ -23,6 +23,8 @@ import {
 	OpenStreetMapImageryProvider,
 	createWorldImageryAsync,
 	IonWorldImageryStyle,
+	Cartographic,
+	sampleTerrainMostDetailed,
 	type ImageryProvider,
 	type ImageryLayer
 } from "cesium";
@@ -90,6 +92,7 @@ if (typeof window !== "undefined" && !(window as any).Cesium) {
 				.then(() => {
 					if (!abort.cancelled) {
 						console.info(`[terrain] ${label} ready.`);
+						void applyCameraPose(olCesium, getCameraState(), { animate: false });
 					}
 				})
 				.catch((error: unknown) => {
@@ -124,7 +127,7 @@ if (typeof window !== "undefined" && !(window as any).Cesium) {
 				);
 			}
 		} else if (state.ionToken) {
-			const provider = await createWorldTerrainAsync();
+			const provider = await createWorldTerrainAsync({ requestVertexNormals: true });
 			if (!abort.cancelled) {
 				attachProvider(provider, "Cesium World Terrain");
 				console.info("[terrain] Using Cesium World Terrain (Ion token provided, no asset id).");
@@ -143,7 +146,23 @@ if (typeof window !== "undefined" && !(window as any).Cesium) {
 		}
 	} catch (error) {
 		if (!abort.cancelled) {
-			console.error("[terrain] Failed to load requested terrain provider. Falling back to ellipsoid.", error);
+			console.error("[terrain] Failed to load requested terrain provider.", error);
+			try {
+				if (state.ionToken) {
+					const provider = await createWorldTerrainAsync({ requestVertexNormals: true });
+					if (!abort.cancelled) {
+						attachProvider(provider, "Cesium World Terrain (fallback)");
+						return;
+					}
+				}
+			} catch (fallbackError) {
+				console.error("[terrain] World Terrain fallback failed", fallbackError);
+			}
+			if (state.terrariumUrl) {
+				const provider = new TerrariumTerrainProvider({ urlTemplate: state.terrariumUrl });
+				attachProvider(provider as unknown as CesiumTerrainProvider, "Terrarium fallback tiles");
+				return;
+			}
 			attachProvider(new EllipsoidTerrainProvider(), "Ellipsoid fallback");
 		}
 	}
@@ -171,16 +190,42 @@ function resolveLonLat(): [number, number] {
 	return [Number.isFinite(lon) ? lon : 0, Number.isFinite(lat) ? lat : 0];
 }
 
-function applyCameraPose(olCesium: any, camera: CameraState, options: CameraPoseOptions = {}) {
+async function sampleGroundHeight(scene: any, lon: number, lat: number): Promise<number> {
+	const cartographic = Cartographic.fromDegrees(lon, lat);
+	const loadedHeight = scene?.globe?.getHeight?.(cartographic);
+	if (typeof loadedHeight === "number" && Number.isFinite(loadedHeight)) {
+		return loadedHeight;
+	}
+	try {
+		const [sampled] = await sampleTerrainMostDetailed(scene.terrainProvider, [
+			Cartographic.fromDegrees(lon, lat)
+		]);
+		if (sampled && Number.isFinite(sampled.height)) return sampled.height;
+	} catch {
+		// Terrain tiles may not be ready yet.
+	}
+	return 0;
+}
+
+async function applyCameraPose(olCesium: any, camera: CameraState, options: CameraPoseOptions = {}) {
 	const scene = olCesium.getCesiumScene();
 	const cameraController = scene.screenSpaceCameraController;
 	const headingRad = CesiumMath.toRadians(camera.heading);
 	const pitchRad = -CesiumMath.toRadians(camera.pitch);
 	const [lon, lat] = options.lonLat ?? resolveLonLat();
 	const range = Math.max(40, options.heightOverride ?? camera.height);
-	// Keep the *ground target* fixed at the current 2D center, otherwise a pitched camera
-	// placed "above" the center will look away and appear to shift the map by miles.
-	const target = Cartesian3.fromDegrees(lon, lat, 0);
+	let groundHeight = 0;
+	const loadedHeight = scene?.globe?.getHeight?.(Cartographic.fromDegrees(lon, lat));
+	if (typeof loadedHeight === "number" && Number.isFinite(loadedHeight)) {
+		groundHeight = loadedHeight;
+	} else if (options.animate || options.lonLat) {
+		groundHeight = await sampleGroundHeight(scene, lon, lat);
+	}
+	if (typeof scene.verticalExaggerationRelativeHeight === "number") {
+		scene.verticalExaggerationRelativeHeight = groundHeight;
+	}
+	// Keep the ground target on the terrain surface, not the ellipsoid at height 0.
+	const target = Cartesian3.fromDegrees(lon, lat, groundHeight);
 	const offset = new HeadingPitchRange(headingRad, pitchRad, range);
 
 	if (options.animate) {
@@ -189,7 +234,6 @@ function applyCameraPose(olCesium: any, camera: CameraState, options: CameraPose
 			duration: options.duration ?? 1.2,
 			easingFunction: EasingFunction.QUADRATIC_OUT,
 			complete: () => {
-				// Reset any lookAt transform so user navigation behaves normally.
 				try {
 					scene.camera.lookAtTransform(CesiumGlobal.Matrix4.IDENTITY);
 				} catch {
@@ -199,7 +243,6 @@ function applyCameraPose(olCesium: any, camera: CameraState, options: CameraPose
 		});
 	} else {
 		scene.camera.lookAt(target, offset);
-		// Reset any lookAt transform so user navigation behaves normally.
 		try {
 			scene.camera.lookAtTransform(CesiumGlobal.Matrix4.IDENTITY);
 		} catch {
@@ -207,7 +250,6 @@ function applyCameraPose(olCesium: any, camera: CameraState, options: CameraPose
 		}
 	}
 
-	// Maintain pitch constraints in case sliders extend beyond controller limits.
 	cameraController.minimumPitch = CesiumMath.toRadians(-89.5);
 }
 
@@ -247,6 +289,19 @@ export default function MapView() {
 									credit: new Credit("USGS Imagery")
 								} as any
 							)) as unknown as ImageryProvider
+						};
+					case "topoOverlay":
+						return {
+							provider: (await ArcGisMapServerImageryProvider.fromUrl(
+								"https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer",
+								{
+									maximumLevel: 16,
+									usePreCachedTilesIfAvailable: true,
+									tilingScheme: new WebMercatorTilingScheme(),
+									credit: new Credit("USGS Topographic Map")
+								} as any
+							)) as unknown as ImageryProvider,
+							alpha: 0.42
 						};
 					case "hillshade": {
 						const { projectPath, activePropertyId } = useAppStore.getState();
@@ -354,9 +409,12 @@ export default function MapView() {
 				}
 			}
 
-			// Optional overlays (3D): hillshade + slope.
-			for (const overlayKey of ["hillshade", "slope"] as BasemapKey[]) {
-				if (!visible[overlayKey]) continue;
+			// Optional overlays (3D): topo/creeks on aerial, plus hillshade + slope.
+			const overlayKeys: BasemapKey[] = [];
+			if (visible.aerial && visible.topoOverlay) overlayKeys.push("topoOverlay");
+			overlayKeys.push("hillshade", "slope");
+			for (const overlayKey of overlayKeys) {
+				if (overlayKey !== "topoOverlay" && !visible[overlayKey]) continue;
 				const cfg = await createBasemapProvider(overlayKey);
 				if (!cfg) continue;
 				try {
@@ -445,8 +503,8 @@ export default function MapView() {
 				// NOTE: depthTestAgainstTerrain can hide OL-Cesium vectors at ellipsoid height.
 				scene.globe.depthTestAgainstTerrain = false;
 				scene.globe.enableLighting = false;
-				scene.globe.showSkirts = false;
-				scene.globe.maximumScreenSpaceError = 2.5;
+				scene.globe.showSkirts = true;
+				scene.globe.maximumScreenSpaceError = 1.5;
 				scene.requestRenderMode = true;
 				scene.maximumRenderTimeChange = Number.POSITIVE_INFINITY;
 				scene.globe.baseColor = CesiumGlobal.Color.BLACK;
@@ -492,7 +550,7 @@ export default function MapView() {
 		if (initialTerrain.enabled) {
 			ensureOlCesium();
 			if (olCesium) {
-				applyCameraPose(olCesium, getCameraState(), { animate: false });
+				void applyCameraPose(olCesium, getCameraState(), { animate: false });
 				void applyTerrainProvider(olCesium, initialTerrain, abort);
 				olCesium.setEnabled(true);
 				queueCesiumBasemapRebuild();
@@ -525,7 +583,7 @@ export default function MapView() {
 					: cameraState.height;
 				// Suppress camera sync during programmatic jump
 				suppressCameraSync = true;
-				applyCameraPose(olCesium, cameraState, {
+				void applyCameraPose(olCesium, cameraState, {
 					animate: true,
 					lonLat: [detail.lon, detail.lat],
 					heightOverride: targetHeight,
@@ -556,7 +614,7 @@ export default function MapView() {
 			// Suppress camera sync during programmatic updates to prevent feedback loop
 			suppressCameraSync = true;
 			// Default to non-animated for slider responsiveness (only animate when explicitly requested)
-			applyCameraPose(olCesium, merged, {
+			void applyCameraPose(olCesium, merged, {
 				animate: detail.animate ?? false,
 				heightOverride: merged.height
 			});
@@ -627,7 +685,7 @@ export default function MapView() {
 						const cameraState = getCameraState();
 						// Suppress camera sync during terrain enable
 						suppressCameraSync = true;
-						applyCameraPose(olCesium as any, cameraState, { animate: true, duration: 1.3 });
+						void applyCameraPose(olCesium as any, cameraState, { animate: true, duration: 1.3 });
 						queueCesiumBasemapRebuild();
 						// Re-enable sync after camera animation completes
 						setTimeout(() => {

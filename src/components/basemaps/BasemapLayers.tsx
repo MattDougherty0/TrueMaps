@@ -20,6 +20,7 @@ export default function BasemapLayers() {
 	const { projectPath, activePropertyId } = useAppStore();
 	const topoRef = useRef<TileLayer<XYZ> | null>(null);
 	const aerialRef = useRef<TileLayer<XYZ> | null>(null);
+	const topoOverlayRef = useRef<TileLayer<XYZ> | null>(null);
 	const hillshadeRef = useRef<TileLayer<XYZ> | null>(null);
 	const slopeRef = useRef<TileLayer<XYZ> | null>(null);
 	const historicalTileRef = useRef<TileLayer<any> | null>(null);
@@ -47,6 +48,17 @@ export default function BasemapLayers() {
 			zIndex: 0
 		});
 		aerial.set("basemapKey", "aerial");
+		const topoOverlaySource = new XYZ({
+			url: REMOTE_SOURCES.topo,
+			attributions: "USGS Topo"
+		});
+		topoOverlaySource.set("olcs_skip", true);
+		const topoOverlay = new TileLayer({
+			source: topoOverlaySource,
+			zIndex: 2,
+			opacity: 0.42
+		});
+		topoOverlay.set("basemapKey", "topoOverlay");
 		// Only attach local MBTiles-backed layers once a project is active to avoid startup errors
 		const hillshade =
 			projectPath
@@ -78,11 +90,13 @@ export default function BasemapLayers() {
 				: null;
 		topoRef.current = topo;
 		aerialRef.current = aerial;
+		topoOverlayRef.current = topoOverlay;
 		hillshadeRef.current = hillshade as TileLayer<XYZ> | null;
 		slopeRef.current = slope as TileLayer<XYZ> | null;
 		// Order matters: base imagery then overlays
 		map.addLayer(topo);
 		map.addLayer(aerial);
+		map.addLayer(topoOverlay);
 		if (hillshade) map.addLayer(hillshade);
 		if (slope) map.addLayer(slope);
 		// Historical imagery layers (managed by store) - separate tile and image layers
@@ -97,12 +111,16 @@ export default function BasemapLayers() {
 		const vis = useBasemapStore.getState().visible;
 		topo.setVisible(!!vis.topo);
 		aerial.setVisible(!!vis.aerial);
+		topoOverlay.setVisible(!!vis.topoOverlay && !!vis.aerial);
 		if (hillshade) hillshade.setVisible(!!vis.hillshade);
 		if (slope) slope.setVisible(!!vis.slope);
 
 		const unsub = useBasemapStore.subscribe((s) => {
 			topo.setVisible(!!s.visible.topo);
 			aerial.setVisible(!!s.visible.aerial);
+			if (topoOverlayRef.current) {
+				topoOverlayRef.current.setVisible(!!s.visible.topoOverlay && !!s.visible.aerial);
+			}
 			if (hillshadeRef.current) hillshadeRef.current.setVisible(!!s.visible.hillshade);
 			if (slopeRef.current) slopeRef.current.setVisible(!!s.visible.slope);
 		});
@@ -183,12 +201,14 @@ export default function BasemapLayers() {
 			unsubHistorical();
 			if (topoRef.current) map.removeLayer(topoRef.current);
 			if (aerialRef.current) map.removeLayer(aerialRef.current);
+			if (topoOverlayRef.current) map.removeLayer(topoOverlayRef.current);
 			if (hillshadeRef.current) map.removeLayer(hillshadeRef.current);
 			if (slopeRef.current) map.removeLayer(slopeRef.current);
 			if (historicalTileRef.current) map.removeLayer(historicalTileRef.current);
 			if (historicalImageRef.current) map.removeLayer(historicalImageRef.current);
 			topoRef.current = null;
 			aerialRef.current = null;
+			topoOverlayRef.current = null;
 			hillshadeRef.current = null;
 			slopeRef.current = null;
 			historicalTileRef.current = null;
