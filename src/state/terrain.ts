@@ -1,10 +1,15 @@
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 
+export type TerrainSource = "world" | "local";
+export type SceneMode3D = "surface" | "mesh";
+
 export type TerrainState = {
 	enabled: boolean;
 	verticalExaggeration: number;
 	maxPitch: number;
+	terrainSource: TerrainSource;
+	sceneMode3D: SceneMode3D;
 	ionToken?: string;
 	terrainUrl?: string;
 	terrainAssetId?: number;
@@ -12,6 +17,8 @@ export type TerrainState = {
 	setEnabled: (enabled: boolean) => void;
 	setVerticalExaggeration: (value: number) => void;
 	setMaxPitch: (value: number) => void;
+	setTerrainSource: (source: TerrainSource) => void;
+	setSceneMode3D: (mode: SceneMode3D) => void;
 	setIonToken: (token?: string) => void;
 	setTerrainUrl: (url?: string) => void;
 	setTerrainAssetId: (assetId?: number | null) => void;
@@ -38,11 +45,23 @@ const initialIonToken = cleanString(envIonToken) ?? storedIonToken;
 const initialTerrainUrl = cleanString(envTerrainUrl);
 const initialTerrarium = cleanString(envTerrariumUrl) ?? DEFAULT_TERRARIUM_TEMPLATE;
 
+const readStoredTerrainSource = (): TerrainSource => {
+	if (typeof window === "undefined") return "world";
+	return window.localStorage.getItem("terrain.source") === "local" ? "local" : "world";
+};
+
+const readStoredSceneMode = (): SceneMode3D => {
+	if (typeof window === "undefined") return "surface";
+	return window.localStorage.getItem("terrain.sceneMode3D") === "mesh" ? "mesh" : "surface";
+};
+
 const terrainStore = createStore<TerrainState>((set) => ({
 	// Always start in 2D. Cesium/OLCesium is constructed on first enable.
 	enabled: false,
 	verticalExaggeration: 1.3,
 	maxPitch: 85,
+	terrainSource: readStoredTerrainSource(),
+	sceneMode3D: readStoredSceneMode(),
 	ionToken: initialIonToken,
 	terrainUrl: initialTerrainUrl,
 	terrariumUrl: initialTerrarium,
@@ -62,6 +81,28 @@ const terrainStore = createStore<TerrainState>((set) => ({
 	setEnabled: (enabled) => set({ enabled }),
 	setVerticalExaggeration: (value) => set({ verticalExaggeration: clampExaggeration(value) }),
 	setMaxPitch: (value) => set({ maxPitch: clampPitch(value) }),
+	setTerrainSource: (source) =>
+		set(() => {
+			try {
+				if (typeof window !== "undefined") {
+					window.localStorage.setItem("terrain.source", source);
+				}
+			} catch {
+				// ignore
+			}
+			return { terrainSource: source };
+		}),
+	setSceneMode3D: (mode) =>
+		set(() => {
+			try {
+				if (typeof window !== "undefined") {
+					window.localStorage.setItem("terrain.sceneMode3D", mode);
+				}
+			} catch {
+				// ignore
+			}
+			return { sceneMode3D: mode };
+		}),
 	setIonToken: (token) =>
 		set(() => {
 			const cleaned = cleanString(token);

@@ -66,6 +66,19 @@ export default function TerrainControls() {
 		setPitch: state.setPitch,
 		setHeight: state.setHeight
 	}));
+	const {
+		terrainSource,
+		sceneMode3D,
+		terrainAssetId,
+		setTerrainSource,
+		setSceneMode3D
+	} = useTerrainPreferences((state) => ({
+		terrainSource: state.terrainSource,
+		sceneMode3D: state.sceneMode3D,
+		terrainAssetId: state.terrainAssetId,
+		setTerrainSource: state.setTerrainSource,
+		setSceneMode3D: state.setSceneMode3D
+	}));
 
 	const roundedExaggeration = useMemo(
 		() => Math.round(verticalExaggeration * 10) / 10,
@@ -280,6 +293,57 @@ export default function TerrainControls() {
 					3D
 				</button>
 			</div>
+			<div style={{ display: "flex", flexDirection: "column", gap: spacing.sm, opacity: enabled ? 1 : 0.55 }}>
+				<span style={sliderLabelStyle}>
+					<span>3D ground</span>
+				</span>
+				<div style={buttonRowStyle}>
+					<button
+						type="button"
+						style={sceneMode3D === "surface" ? modeButtonActive : modeButtonBase}
+						onClick={() => setSceneMode3D("surface")}
+						disabled={!enabled}
+					>
+						Satellite
+					</button>
+					<button
+						type="button"
+						style={sceneMode3D === "mesh" ? modeButtonActive : modeButtonBase}
+						onClick={() => setSceneMode3D("mesh")}
+						disabled={!enabled || !ionToken}
+						title={ionToken ? "Google Photorealistic 3D tiles (trees and buildings where coverage exists)" : "Requires a Cesium Ion token"}
+					>
+						3D mesh
+					</button>
+				</div>
+			</div>
+			{terrainAssetId ? (
+				<div style={{ display: "flex", flexDirection: "column", gap: spacing.sm, opacity: enabled ? 1 : 0.55 }}>
+					<span style={sliderLabelStyle}>
+						<span>Elevation data</span>
+					</span>
+					<div style={buttonRowStyle}>
+						<button
+							type="button"
+							style={terrainSource === "world" ? modeButtonActive : modeButtonBase}
+							onClick={() => setTerrainSource("world")}
+							disabled={!enabled}
+							title="Cesium World Terrain from USGS 3DEP. Best for McKean and anywhere the local DEM does not cover."
+						>
+							World
+						</button>
+						<button
+							type="button"
+							style={terrainSource === "local" ? modeButtonActive : modeButtonBase}
+							onClick={() => setTerrainSource("local")}
+							disabled={!enabled || !ionToken}
+							title="Your uploaded Ion DEM (Camp / Newport). Use this on that property only."
+						>
+							Local DEM
+						</button>
+					</div>
+				</div>
+			) : null}
 			<label style={{ display: "flex", flexDirection: "column", gap: spacing.sm }}>
 				<span style={sliderLabelStyle}>
 					<span>Elevation exaggeration</span>
@@ -365,16 +429,20 @@ export default function TerrainControls() {
 				</label>
 			</div>
 			<div style={helperTextStyle}>
-				Toggle 3D to tilt the map. Keep exaggeration near 1.3× so ridges look natural instead of stretched.
+				3D uses current satellite on USGS 3DEP terrain, with afternoon lighting so ridges read. Historical stays 2D. Hillshade is 2D-only; turn on Topo / creeks if you want linework on the photos.
 			</div>
-			{!ionToken && !terrainUrl && !terrariumUrl ? (
-				<div style={{ ...helperTextStyle, color: colors.error }}>
-					Optional: set `VITE_CESIUM_ION_TOKEN` or `VITE_CESIUM_TERRAIN_URL` to stream high-resolution terrain tiles.
+			{ionToken ? (
+				<div style={{ ...helperTextStyle, color: colors.success }}>
+					{terrainSource === "local"
+						? "Using your local Ion DEM. Switch to World if the land looks flat or clipped."
+						: sceneMode3D === "mesh"
+							? "Photorealistic mesh is on. Woods coverage varies; switch back to Satellite if trees hide the ground."
+							: "Using Cesium World Terrain and current satellite imagery."}
 				</div>
 			) : null}
 			{!ionToken && !terrainUrl && terrariumUrl ? (
-				<div style={{ ...helperTextStyle, color: colors.success }}>
-					Using global AWS Terrarium elevation tiles for realistic hills without a Cesium Ion token.
+				<div style={{ ...helperTextStyle, color: colors.error }}>
+					No Cesium Ion token — 3D is falling back to ~30 m Terrarium tiles. Set VITE_CESIUM_ION_TOKEN for real terrain.
 				</div>
 			) : null}
 		</div>

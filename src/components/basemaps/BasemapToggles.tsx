@@ -178,11 +178,11 @@ export default function BasemapToggles() {
 				</label>
 				{is3D ? (
 					<div style={{ gridColumn: "1 / -1", fontSize: typography.fontSize.xs, color: colors.textMuted }}>
-						Historical imagery is **2D-only** for now (to keep 3D reliable + fast).
+						Historical imagery stays 2D. 3D uses current satellite on real terrain instead.
 					</div>
 				) : null}
 				<div style={{ gridColumn: "1 / -1", fontSize: typography.fontSize.sm, color: colors.textMuted, marginTop: spacing.xs }}>
-					Overlays (stay on with Aerial)
+					Overlays {is3D ? "(Topo / creeks drapes as lines; hillshade and slope stay 2D)" : "(stay on with Aerial)"}
 				</div>
 				<label style={{ display: "flex", alignItems: "center", gap: spacing.sm, cursor: "pointer", color: colors.textPrimary }}>
 					<input
