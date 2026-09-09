@@ -69,6 +69,21 @@ function resolveInsideBase(baseDir: string, relativePath: string): string {
 	return target;
 }
 
+function isPathInside(parent: string, child: string): boolean {
+	const rel = path.relative(parent, child);
+	return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+async function resolvedPathInside(parent: string, candidate: string): Promise<string | null> {
+	try {
+		const parentReal = await fs.realpath(parent);
+		const candidateReal = await fs.realpath(candidate);
+		return isPathInside(parentReal, candidateReal) ? candidateReal : null;
+	} catch {
+		return null;
+	}
+}
+
 async function sha256File(filePath: string): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const hash = createHash("sha256");
@@ -482,6 +497,64 @@ app.whenReady().then(() => {
 	});
 
 	ipcMain.handle(
+		"media:deleteTrailCameraSource",
+		async (
+			_event,
+			payload: {
+				projectPath: string;
+				sourceRoot: string;
+				sourcePath?: string;
+				sourceRelativePath?: string;
+			}
+		): Promise<{ deleted: boolean; status: "deleted" | "missing" | "unsafe" | "error" }> => {
+			const projectPath = path.resolve(payload.projectPath || "");
+			const sourceRoot = path.resolve(payload.sourceRoot || "");
+			if (!projectPath || !sourceRoot) return { deleted: false, status: "unsafe" };
+
+			let sourceRootReal: string;
+			try {
+				sourceRootReal = await fs.realpath(sourceRoot);
+				const rootStat = await fs.stat(sourceRootReal);
+				if (!rootStat.isDirectory()) return { deleted: false, status: "missing" };
+			} catch {
+				return { deleted: false, status: "missing" };
+			}
+
+			if (isPathInside(projectPath, sourceRootReal)) {
+				return { deleted: false, status: "unsafe" };
+			}
+
+			const relative = (payload.sourceRelativePath || "").replace(/\\/g, "/").replace(/^\/+/, "");
+			if (relative.includes("..")) return { deleted: false, status: "unsafe" };
+
+			const candidates = [
+				payload.sourcePath ? path.resolve(payload.sourcePath) : "",
+				relative ? path.resolve(sourceRootReal, ...relative.split("/").filter(Boolean)) : ""
+			].filter(Boolean);
+
+			let target: string | null = null;
+			for (const candidate of candidates) {
+				target = await resolvedPathInside(sourceRootReal, candidate);
+				if (target) break;
+			}
+			if (!target) return { deleted: false, status: "missing" };
+			if (isPathInside(projectPath, target)) return { deleted: false, status: "unsafe" };
+
+			try {
+				const stat = await fs.lstat(target);
+				if (!stat.isFile() || stat.isSymbolicLink()) return { deleted: false, status: "unsafe" };
+				await fs.unlink(target);
+				return { deleted: true, status: "deleted" };
+			} catch (error) {
+				const code = (error as NodeJS.ErrnoException).code;
+				if (code === "ENOENT") return { deleted: false, status: "missing" };
+				console.warn("[media:deleteTrailCameraSource] Failed to delete", target, error);
+				return { deleted: false, status: "error" };
+			}
+		}
+	);
+
+	ipcMain.handle(
 		"media:listFolder",
 		async (_event, baseDir: string, relativeFolderPath: string): Promise<string[]> => {
 			// relativeFolderPath is project-relative, e.g. "media/trail_cameras/cam_01"
@@ -582,6 +655,8 @@ app.whenReady().then(() => {
 				sha256: string;
 				size: number;
 				capturedAt: string;
+				sourcePath: string;
+				sourceRelativePath: string;
 			}>;
 			skippedDuplicates: number;
 			skippedUnsupported: number;
@@ -639,6 +714,8 @@ app.whenReady().then(() => {
 				sha256: string;
 				size: number;
 				capturedAt: string;
+				sourcePath: string;
+				sourceRelativePath: string;
 			}> = [];
 			const failedFiles: string[] = [];
 			let skippedDuplicates = 0;
@@ -685,7 +762,9 @@ app.whenReady().then(() => {
 						type: videoExts.has(parsed.ext.toLowerCase()) ? "video" : "image",
 						sha256: hash,
 						size: stat.size,
-						capturedAt: stat.mtime.toISOString()
+						capturedAt: stat.mtime.toISOString(),
+						sourcePath,
+						sourceRelativePath: path.relative(sourceDir, sourcePath).split(path.sep).join("/")
 					});
 				} catch (error) {
 					console.warn("[media:importTrailCamera] Failed to import", sourcePath, error);

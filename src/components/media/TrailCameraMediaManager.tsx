@@ -1,15 +1,27 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import useAppStore from "../../state/store";
 import {
+	fileNeedsReview,
 	useMediaStore,
 	type KnownDeer,
 	type MediaClassification,
-	type MediaFile
+	type MediaFile,
+	type StoredCameraSite
 } from "../../state/media";
-import { loadCameraSites, updateCameraSiteArea, type CameraSite } from "../../lib/media/cameraSites";
+import {
+	createCameraSite,
+	loadCameraSites,
+	updateCameraSiteArea,
+	type CameraSite
+} from "../../lib/media/cameraSites";
 import { borderRadius, colors, spacing, typography } from "../../lib/theme";
 
 type ManagerView = "cameras" | "deer" | "trash" | "review";
+type CameraBrowse =
+	| { level: "home" }
+	| { level: "needs-review" }
+	| { level: "site"; siteId: string }
+	| { level: "needs-review-site"; siteId: string };
 
 type TrailCameraMediaManagerProps = {
 	onClose: () => void;
@@ -17,6 +29,8 @@ type TrailCameraMediaManagerProps = {
 	initialCameraName?: string | null;
 	initialCameraSiteId?: string | null;
 };
+
+const UNASSIGNED_SITE_ID = "__unassigned__";
 
 const createId = (prefix: string): string =>
 	`${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -66,6 +80,87 @@ const primaryButtonStyle: CSSProperties = {
 	background: colors.primary,
 	borderColor: colors.primary,
 	color: colors.textOnPrimary
+};
+
+const sortByDate = (files: MediaFile[]): MediaFile[] =>
+	[...files].sort((a, b) => (b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt));
+
+const filesForSite = (files: MediaFile[], siteId: string): MediaFile[] =>
+	sortByDate(
+		files.filter((file) =>
+			siteId === UNASSIGNED_SITE_ID ? !file.cameraSiteId : file.cameraSiteId === siteId
+		)
+	);
+
+const formatCaptureDate = (iso?: string): string => {
+	if (!iso) return "Unknown date";
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return "Unknown date";
+	return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+};
+
+const formatCaptureDateTime = (iso?: string): string => {
+	if (!iso) return "Unknown date";
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return "Unknown date";
+	return date.toLocaleString(undefined, {
+		year: "numeric",
+		month: "short",
+		day: "numeric",
+		hour: "numeric",
+		minute: "2-digit"
+	});
+};
+
+const latestDateLabel = (files: MediaFile[]): string | undefined => {
+	const latest = files[0]?.capturedAt || files[0]?.createdAt;
+	return latest ? `Latest ${formatCaptureDate(latest)}` : undefined;
+};
+
+const dateKey = (file: MediaFile): string => {
+	const iso = file.capturedAt || file.createdAt;
+	if (!iso) return "unknown";
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return "unknown";
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+};
+
+const groupFilesByDate = (files: MediaFile[]): Array<{ key: string; label: string; files: MediaFile[] }> => {
+	const groups = new Map<string, MediaFile[]>();
+	for (const file of files) {
+		const key = dateKey(file);
+		const list = groups.get(key);
+		if (list) list.push(file);
+		else groups.set(key, [file]);
+	}
+	return [...groups.entries()]
+		.sort((a, b) => b[0].localeCompare(a[0]))
+		.map(([key, grouped]) => ({
+			key,
+			label: key === "unknown" ? "Unknown date" : formatCaptureDate(`${key}T12:00:00`),
+			files: grouped
+		}));
+};
+
+const mergeCameraSites = (geoSites: CameraSite[], stored: StoredCameraSite[]): CameraSite[] => {
+	const byId = new Map<string, CameraSite>();
+	for (const site of stored) {
+		byId.set(site.id, {
+			id: site.id,
+			name: site.name,
+			propertyId: site.propertyId,
+			areaName: site.areaName,
+			coordinates: site.coordinates
+		});
+	}
+	for (const site of geoSites) {
+		const existing = byId.get(site.id);
+		byId.set(site.id, existing ? { ...existing, ...site } : site);
+	}
+	return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
 };
 
 function MediaPreview({ file, large = false }: { file: MediaFile; large?: boolean }) {
@@ -128,14 +223,75 @@ function MediaCard({
 				<div style={{ fontSize: typography.fontSize.sm, fontWeight: typography.fontWeight.semibold, overflow: "hidden", textOverflow: "ellipsis" }}>
 					{file.name}
 				</div>
+				<div style={{ fontSize: typography.fontSize.xs, color: colors.textPrimary, fontWeight: typography.fontWeight.medium }}>
+					{formatCaptureDateTime(file.capturedAt || file.createdAt)}
+				</div>
 				<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>
 					{cameraName || "Unassigned camera"}
-					{file.capturedAt ? ` · ${new Date(file.capturedAt).toLocaleDateString()}` : ""}
 				</div>
 				<div style={{ fontSize: typography.fontSize.xs, color: file.classification === "blank" ? colors.error : colors.textSecondary }}>
 					{file.classification ? classificationLabels[file.classification] : "Needs review"}
 					{deerNames.length ? ` · ${deerNames.join(", ")}` : ""}
 				</div>
+			</div>
+		</button>
+	);
+}
+
+function FolderCard({
+	title,
+	subtitle,
+	meta,
+	preview,
+	accent = "default",
+	onClick
+}: {
+	title: string;
+	subtitle?: string;
+	meta?: string;
+	preview?: ReactNode;
+	accent?: "default" | "review";
+	onClick: () => void;
+}) {
+	const isReview = accent === "review";
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			style={{
+				textAlign: "left",
+				padding: 0,
+				borderRadius: borderRadius.lg,
+				border: `1px solid ${isReview ? colors.primaryBorder : colors.borderMedium}`,
+				background: isReview ? colors.primaryLight : colors.bgPanelSolid,
+				overflow: "hidden",
+				cursor: "pointer",
+				color: colors.textPrimary,
+				minHeight: 170
+			}}
+		>
+			<div
+				style={{
+					height: 96,
+					width: "100%",
+					background: isReview ? "rgba(255, 107, 53, 0.18)" : "#efe8dc",
+					display: "grid",
+					placeItems: "center",
+					overflow: "hidden"
+				}}
+			>
+				{preview ? (
+					<div style={{ width: "100%", height: "100%" }}>{preview}</div>
+				) : (
+					<div style={{ fontSize: 36, lineHeight: 1 }}>{isReview ? "🔎" : "📁"}</div>
+				)}
+			</div>
+			<div style={{ padding: spacing.md, display: "grid", gap: 3 }}>
+				<div style={{ fontSize: typography.fontSize.sm, fontWeight: typography.fontWeight.semibold, overflow: "hidden", textOverflow: "ellipsis" }}>
+					{title}
+				</div>
+				{subtitle ? <div style={{ fontSize: typography.fontSize.xs, color: colors.textSecondary }}>{subtitle}</div> : null}
+				{meta ? <div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>{meta}</div> : null}
 			</div>
 		</button>
 	);
@@ -158,15 +314,18 @@ export default function TrailCameraMediaManager({
 		updateFiles,
 		addKnownDeer,
 		addImportSession,
+		addCameraSite,
 		loadFromProject,
 		saveToProject
 	} = useMediaStore();
 	const [sites, setSites] = useState<CameraSite[]>([]);
-	const [selectedSiteId, setSelectedSiteId] = useState("");
+	const [cameraBrowse, setCameraBrowse] = useState<CameraBrowse>({ level: "home" });
+	const [deerBrowse, setDeerBrowse] = useState<"home" | "deer">("home");
 	const [selectedDeerId, setSelectedDeerId] = useState("");
 	const [newDeerName, setNewDeerName] = useState("");
 	const [existingFolderId, setExistingFolderId] = useState("");
 	const [view, setView] = useState<ManagerView>("cameras");
+	const [reviewReturnView, setReviewReturnView] = useState<Exclude<ManagerView, "review">>("cameras");
 	const [loading, setLoading] = useState(true);
 	const [importing, setImporting] = useState(false);
 	const [importProgress, setImportProgress] = useState<{
@@ -179,6 +338,11 @@ export default function TrailCameraMediaManager({
 	const [reviewIds, setReviewIds] = useState<string[]>([]);
 	const [reviewIndex, setReviewIndex] = useState(0);
 	const [areaName, setAreaName] = useState("");
+	const [creatingSite, setCreatingSite] = useState(false);
+	const [newSiteName, setNewSiteName] = useState("");
+	const [newSitePropertyId, setNewSitePropertyId] = useState("");
+	const [newSiteArea, setNewSiteArea] = useState("");
+	const [sdDeleteStats, setSdDeleteStats] = useState({ deleted: 0, missing: 0, failed: 0 });
 
 	useEffect(() => {
 		if (!projectPath) return;
@@ -201,12 +365,16 @@ export default function TrailCameraMediaManager({
 					)
 				).flat();
 				if (cancelled) return;
-				setSites(loadedSites);
+				const merged = mergeCameraSites(loadedSites, useMediaStore.getState().cameraSites);
+				setSites(merged);
 				const initial =
-					loadedSites.find((site) => site.id === initialCameraSiteId) ||
-					loadedSites.find((site) => site.name === initialCameraName) ||
-					loadedSites[0];
-				setSelectedSiteId(initial?.id || "__unassigned__");
+					merged.find((site) => site.id === initialCameraSiteId) ||
+					merged.find((site) => site.name === initialCameraName);
+				if (initial) {
+					setCameraBrowse({ level: "site", siteId: initial.id });
+				} else {
+					setCameraBrowse({ level: "home" });
+				}
 			} catch (error) {
 				console.error("Failed to load trail camera sites", error);
 				if (!cancelled) setMessage("Could not load trail camera sites.");
@@ -225,7 +393,11 @@ export default function TrailCameraMediaManager({
 		return window.api.onTrailCameraImportProgress(setImportProgress);
 	}, []);
 
-	const selectedSite = sites.find((site) => site.id === selectedSiteId) || null;
+	const browsingSiteId =
+		cameraBrowse.level === "site" || cameraBrowse.level === "needs-review-site"
+			? cameraBrowse.siteId
+			: "";
+	const selectedSite = sites.find((site) => site.id === browsingSiteId) || null;
 	const siteNames = useMemo(() => new Map(sites.map((site) => [site.id, site.name])), [sites]);
 	const deerNames = useMemo(() => new Map(knownDeer.map((deer) => [deer.id, deer.name])), [knownDeer]);
 	const propertyNames = useMemo(
@@ -246,26 +418,21 @@ export default function TrailCameraMediaManager({
 		setAreaName(inferred);
 	}, [selectedSite, propertyNames]);
 
-	const activeFiles = useMemo(
-		() => files.filter((file) => !file.trashedAt),
-		[files]
-	);
+	const activeFiles = useMemo(() => files.filter((file) => !file.trashedAt), [files]);
+	const reviewNeededFiles = useMemo(() => activeFiles.filter(fileNeedsReview), [activeFiles]);
 	const selectedSiteFiles = useMemo(
+		() => (browsingSiteId ? filesForSite(activeFiles, browsingSiteId) : []),
+		[activeFiles, browsingSiteId]
+	);
+	const visibleSiteFiles = useMemo(
 		() =>
-			activeFiles
-				.filter((file) =>
-					selectedSiteId === "__unassigned__"
-						? !file.cameraSiteId
-						: file.cameraSiteId === selectedSiteId
-				)
-				.sort((a, b) => (b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt)),
-		[activeFiles, selectedSiteId]
+			cameraBrowse.level === "needs-review-site"
+				? selectedSiteFiles.filter(fileNeedsReview)
+				: selectedSiteFiles,
+		[cameraBrowse.level, selectedSiteFiles]
 	);
 	const selectedDeerFiles = useMemo(
-		() =>
-			activeFiles
-				.filter((file) => file.knownDeerIds?.includes(selectedDeerId))
-				.sort((a, b) => (b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt)),
+		() => sortByDate(activeFiles.filter((file) => file.knownDeerIds?.includes(selectedDeerId))),
 		[activeFiles, selectedDeerId]
 	);
 	const trashedFiles = useMemo(
@@ -274,6 +441,33 @@ export default function TrailCameraMediaManager({
 	);
 	const reviewFiles = reviewIds.map((id) => files.find((file) => file.id === id)).filter(Boolean) as MediaFile[];
 	const currentReviewFile = reviewFiles[reviewIndex] || null;
+	const unassignedFiles = useMemo(() => filesForSite(activeFiles, UNASSIGNED_SITE_ID), [activeFiles]);
+	const pendingBySiteId = useMemo(() => {
+		const counts = new Map<string, MediaFile[]>();
+		for (const file of reviewNeededFiles) {
+			const siteId = file.cameraSiteId || UNASSIGNED_SITE_ID;
+			const list = counts.get(siteId);
+			if (list) list.push(file);
+			else counts.set(siteId, [file]);
+		}
+		for (const [siteId, list] of counts) {
+			counts.set(siteId, sortByDate(list));
+		}
+		return counts;
+	}, [reviewNeededFiles]);
+
+	const siteLabel = (siteId: string): string => {
+		if (siteId === UNASSIGNED_SITE_ID) return "Unassigned";
+		const site = sites.find((item) => item.id === siteId);
+		return site?.name || "Unknown camera";
+	};
+
+	const siteAreaLabel = (siteId: string): string | undefined => {
+		if (siteId === UNASSIGNED_SITE_ID) return "No camera location yet";
+		const site = sites.find((item) => item.id === siteId);
+		if (!site) return undefined;
+		return site.areaName || propertyNames.get(site.propertyId || "") || undefined;
+	};
 
 	const createKnownDeer = async (): Promise<string | null> => {
 		if (!projectPath || !newDeerName.trim()) return null;
@@ -347,6 +541,7 @@ export default function TrailCameraMediaManager({
 			}))
 		);
 		setSelectedDeerId(deerId);
+		setDeerBrowse("deer");
 		setExistingFolderId("");
 		await saveToProject(projectPath);
 		setMessage(`Created ${folder.name} and linked ${matchingFiles.length} existing file(s) without moving them.`);
@@ -354,24 +549,34 @@ export default function TrailCameraMediaManager({
 
 	const startReview = (siteFiles: MediaFile[], startId?: string) => {
 		const ids = siteFiles.map((file) => file.id);
+		setReviewReturnView(view === "deer" ? "deer" : "cameras");
 		setReviewIds(ids);
 		setReviewIndex(Math.max(0, startId ? ids.indexOf(startId) : 0));
+		setSdDeleteStats({ deleted: 0, missing: 0, failed: 0 });
 		setView("review");
 	};
 
 	const saveCameraArea = async (nextAreaName: string) => {
 		if (!projectPath || !selectedSite || !nextAreaName.trim()) return;
-		await updateCameraSiteArea(
-			projectPath,
-			selectedSite.propertyId,
-			selectedSite.id,
-			nextAreaName.trim()
-		);
+		try {
+			await updateCameraSiteArea(
+				projectPath,
+				selectedSite.propertyId,
+				selectedSite.id,
+				nextAreaName.trim()
+			);
+		} catch {
+			// Media-only sites are not in GeoJSON yet; keep the in-memory/area metadata anyway.
+		}
 		setSites((current) =>
 			current.map((site) =>
 				site.id === selectedSite.id ? { ...site, areaName: nextAreaName.trim() } : site
 			)
 		);
+		addCameraSite({
+			...selectedSite,
+			areaName: nextAreaName.trim()
+		});
 		updateFiles(
 			files
 				.filter((file) => file.cameraSiteId === selectedSite.id)
@@ -435,6 +640,32 @@ export default function TrailCameraMediaManager({
 		await saveToProject(projectPath);
 	};
 
+	const handleCreateSite = async () => {
+		if (!projectPath || !newSiteName.trim()) return;
+		const propertyId = newSitePropertyId || activePropertyId || properties[0]?.id || "default";
+		const property = properties.find((item) => item.id === propertyId);
+		try {
+			const site = await createCameraSite(projectPath, {
+				name: newSiteName.trim(),
+				propertyId,
+				areaName: newSiteArea.trim() || property?.name || null
+			});
+			addCameraSite(site);
+			setSites((current) =>
+				[...current.filter((item) => item.id !== site.id), site].sort((a, b) => a.name.localeCompare(b.name))
+			);
+			await saveToProject(projectPath);
+			setCreatingSite(false);
+			setNewSiteName("");
+			setNewSiteArea("");
+			setCameraBrowse({ level: "site", siteId: site.id });
+			setMessage(`Created ${site.name}. You can import its SD card from this folder.`);
+		} catch (error) {
+			console.error("Failed to create camera site", error);
+			setMessage("Could not create that camera site.");
+		}
+	};
+
 	const handleImport = async () => {
 		if (!projectPath || !selectedSite || typeof window.api.importTrailCameraMedia !== "function") return;
 		const sourceFolder = await window.api.chooseDirectory();
@@ -488,6 +719,8 @@ export default function TrailCameraMediaManager({
 				capturedAt: file.capturedAt,
 				reviewStatus: "pending",
 				knownDeerIds: [],
+				sourcePath: file.sourcePath,
+				sourceRelativePath: file.sourceRelativePath,
 				createdAt: now,
 				updatedAt: now
 			}));
@@ -519,6 +752,29 @@ export default function TrailCameraMediaManager({
 		}
 	};
 
+	const tryDeleteSourceOriginal = async (
+		file: MediaFile
+	): Promise<"deleted" | "missing" | "skipped" | "failed"> => {
+		if (!projectPath || file.sourceDeletedAt) return "skipped";
+		if (!file.sourcePath && !file.sourceRelativePath) return "skipped";
+		const session = importSessions.find((item) => item.id === file.importSessionId);
+		if (!session?.sourceFolder || typeof window.api.deleteTrailCameraSource !== "function") return "skipped";
+		try {
+			const result = await window.api.deleteTrailCameraSource({
+				projectPath,
+				sourceRoot: session.sourceFolder,
+				sourcePath: file.sourcePath,
+				sourceRelativePath: file.sourceRelativePath
+			});
+			if (result.deleted) return "deleted";
+			if (result.status === "missing") return "missing";
+			return "failed";
+		} catch (error) {
+			console.warn("Failed to delete trail camera source file", error);
+			return "failed";
+		}
+	};
+
 	const classifyCurrent = async (classification: MediaClassification) => {
 		if (!projectPath || !currentReviewFile) return;
 		if (
@@ -529,7 +785,7 @@ export default function TrailCameraMediaManager({
 			setMessage("Choose or create a known deer first.");
 			return;
 		}
-		updateFile(currentReviewFile.id, {
+		const changes: Partial<MediaFile> = {
 			classification,
 			reviewStatus: "reviewed",
 			knownDeerIds:
@@ -541,7 +797,19 @@ export default function TrailCameraMediaManager({
 							])
 					  )
 					: []
-		});
+		};
+		if (classification === "blank") {
+			const sdStatus = await tryDeleteSourceOriginal(currentReviewFile);
+			if (sdStatus === "deleted") {
+				changes.sourceDeletedAt = new Date().toISOString();
+				setSdDeleteStats((current) => ({ ...current, deleted: current.deleted + 1 }));
+			} else if (sdStatus === "missing") {
+				setSdDeleteStats((current) => ({ ...current, missing: current.missing + 1 }));
+			} else if (sdStatus === "failed") {
+				setSdDeleteStats((current) => ({ ...current, failed: current.failed + 1 }));
+			}
+		}
+		updateFile(currentReviewFile.id, changes);
 		await saveToProject(projectPath);
 		setMessage("");
 		setReviewIndex((index) => index + 1);
@@ -560,10 +828,22 @@ export default function TrailCameraMediaManager({
 		}));
 		if (changes.length) updateFiles(changes);
 		await saveToProject(projectPath);
-		setMessage(
-			`Review complete. ${changes.length} blank/misfire file(s) moved to recoverable Trash.`
-		);
-		setView("cameras");
+		const sdParts = [
+			`${changes.length} blank/misfire file(s) moved to recoverable Trash.`
+		];
+		if (sdDeleteStats.deleted) {
+			sdParts.push(`Deleted ${sdDeleteStats.deleted} original(s) from the SD card.`);
+		}
+		if (sdDeleteStats.missing) {
+			sdParts.push(
+				`${sdDeleteStats.missing} original(s) were already gone or the card was ejected.`
+			);
+		}
+		if (sdDeleteStats.failed) {
+			sdParts.push(`${sdDeleteStats.failed} original(s) could not be deleted from the SD card.`);
+		}
+		setMessage(`Review complete. ${sdParts.join(" ")}`);
+		setView(reviewReturnView);
 		setReviewIds([]);
 		setReviewIndex(0);
 	};
@@ -572,6 +852,15 @@ export default function TrailCameraMediaManager({
 		if (!projectPath) return;
 		updateFile(file.id, { trashedAt: undefined });
 		await saveToProject(projectPath);
+	};
+
+	const openCreateSite = () => {
+		const propertyId = activePropertyId || properties[0]?.id || "default";
+		const property = properties.find((item) => item.id === propertyId);
+		setNewSitePropertyId(propertyId);
+		setNewSiteArea(property?.name || "");
+		setNewSiteName("");
+		setCreatingSite(true);
 	};
 
 	const modalStyle: CSSProperties = {
@@ -598,7 +887,26 @@ export default function TrailCameraMediaManager({
 		fontFamily: typography.fontFamily
 	};
 
-	const renderGrid = (gridFiles: MediaFile[]) => (
+	const crumbButton = (label: string, onClick?: () => void, current = false) => (
+		<button
+			key={label}
+			onClick={onClick}
+			disabled={!onClick}
+			style={{
+				...buttonStyle,
+				padding: "4px 8px",
+				background: "transparent",
+				borderColor: "transparent",
+				color: current ? colors.textPrimary : colors.primary,
+				cursor: onClick ? "pointer" : "default",
+				fontWeight: current ? typography.fontWeight.semibold : typography.fontWeight.medium
+			}}
+		>
+			{label}
+		</button>
+	);
+
+	const renderGrid = (gridFiles: MediaFile[], reviewPool = gridFiles) => (
 		<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: spacing.lg }}>
 			{gridFiles.map((file) => (
 				<MediaCard
@@ -610,11 +918,61 @@ export default function TrailCameraMediaManager({
 							: siteNames.get(file.cameraSiteId || "")
 					}
 					deerNames={(file.knownDeerIds || []).map((id) => deerNames.get(id) || "Unknown deer")}
-					onClick={() => startReview(gridFiles, file.id)}
+					onClick={() => startReview(reviewPool, file.id)}
 				/>
 			))}
 		</div>
 	);
+
+	const renderGroupedGrid = (gridFiles: MediaFile[]) => {
+		const groups = groupFilesByDate(gridFiles);
+		if (groups.length <= 1) return renderGrid(gridFiles);
+		return (
+			<div style={{ display: "grid", gap: spacing.xxl }}>
+				{groups.map((group) => (
+					<section key={group.key} style={{ display: "grid", gap: spacing.md }}>
+						<div style={{ fontSize: typography.fontSize.md, fontWeight: typography.fontWeight.semibold }}>
+							{group.label}
+							<span style={{ marginLeft: spacing.sm, fontSize: typography.fontSize.xs, color: colors.textMuted, fontWeight: typography.fontWeight.medium }}>
+								{group.files.length} file{group.files.length === 1 ? "" : "s"}
+							</span>
+						</div>
+						{renderGrid(group.files, gridFiles)}
+					</section>
+				))}
+			</div>
+		);
+	};
+
+	const renderLocationFolder = (siteId: string, siteFiles: MediaFile[], onClick: () => void) => {
+		const pending = siteFiles.filter(fileNeedsReview).length;
+		const cover = siteFiles[0];
+		return (
+			<FolderCard
+				key={siteId}
+				title={siteLabel(siteId)}
+				subtitle={siteAreaLabel(siteId)}
+				meta={[
+					siteFiles.length ? `${siteFiles.length} file${siteFiles.length === 1 ? "" : "s"}` : "No media yet",
+					pending ? `${pending} need review` : null,
+					latestDateLabel(siteFiles)
+				]
+					.filter(Boolean)
+					.join(" · ")}
+				preview={cover ? <MediaPreview file={cover} /> : undefined}
+				onClick={onClick}
+			/>
+		);
+	};
+
+	const folderGridStyle: CSSProperties = {
+		display: "grid",
+		gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+		gap: spacing.lg
+	};
+
+	const pendingSiteIds = [...pendingBySiteId.keys()].sort((a, b) => siteLabel(a).localeCompare(siteLabel(b)));
+	const showUnassignedFolder = unassignedFiles.length > 0;
 
 	return (
 		<div style={modalStyle} onClick={(event) => event.target === event.currentTarget && onClose()}>
@@ -631,7 +989,7 @@ export default function TrailCameraMediaManager({
 					<div style={{ flex: 1 }}>
 						<div style={{ fontSize: typography.fontSize.xl, fontWeight: typography.fontWeight.bold }}>Trail Camera Media</div>
 						<div style={{ fontSize: typography.fontSize.sm, color: colors.textMuted }}>
-							Import an SD card, review the useful moments, and track known deer across camera sites.
+							Browse camera locations, review new media, and track known deer.
 						</div>
 					</div>
 					<button onClick={onOpenContent} style={buttonStyle}>Legacy library</button>
@@ -644,10 +1002,14 @@ export default function TrailCameraMediaManager({
 							["cameras", "Camera sites"],
 							["deer", "Known deer"],
 							["trash", `Trash${trashedFiles.length ? ` (${trashedFiles.length})` : ""}`]
-						] as Array<[ManagerView, string]>).map(([id, label]) => (
+						] as Array<[Exclude<ManagerView, "review">, string]>).map(([id, label]) => (
 							<button
 								key={id}
-								onClick={() => setView(id)}
+								onClick={() => {
+									setView(id);
+									if (id === "cameras") setCreatingSite(false);
+									if (id === "deer") setDeerBrowse("home");
+								}}
 								style={{
 									...buttonStyle,
 									background: view === id ? colors.primaryLight : "transparent",
@@ -671,172 +1033,349 @@ export default function TrailCameraMediaManager({
 
 					{!loading && view === "cameras" ? (
 						<div style={{ display: "grid", gap: spacing.xxl }}>
-							<div style={{ display: "flex", gap: spacing.md, alignItems: "end", flexWrap: "wrap" }}>
-								<label style={{ display: "grid", gap: spacing.xs, minWidth: 260 }}>
-									<span style={{ fontSize: typography.fontSize.sm, color: colors.textSecondary }}>Camera site</span>
-									<select value={selectedSiteId} onChange={(event) => setSelectedSiteId(event.target.value)} style={inputStyle}>
-										<option value="__unassigned__">Unassigned media</option>
-										{sites.map((site) => (
-											<option key={site.id} value={site.id}>
-												{site.areaName || propertyNames.get(site.propertyId || "") || "Property"} / {site.name}
-											</option>
-										))}
-									</select>
-								</label>
-								<label style={{ display: "grid", gap: spacing.xs, minWidth: 160 }}>
-									<span style={{ fontSize: typography.fontSize.sm, color: colors.textSecondary }}>Area</span>
-									<input
-										list="trail-camera-areas"
-										value={areaName}
-										onChange={(event) => setAreaName(event.target.value)}
-										onBlur={() => areaName.trim() && void saveCameraArea(areaName)}
-										placeholder="Camp or Leacock"
-										disabled={!selectedSite}
-										style={{ ...inputStyle, opacity: selectedSite ? 1 : 0.55 }}
-									/>
-									<datalist id="trail-camera-areas">
-										<option value="Camp" />
-										<option value="Leacock" />
-									</datalist>
-								</label>
-								<button
-									onClick={() => void handleImport()}
-									disabled={!selectedSite || importing}
-									style={{ ...primaryButtonStyle, opacity: !selectedSite || importing ? 0.55 : 1 }}
-								>
-									{importing ? "Importing…" : "Import SD Card Folder"}
-								</button>
-								{selectedSiteFiles.some((file) => file.reviewStatus === "pending") ? (
-									<button
-										onClick={() => startReview(selectedSiteFiles.filter((file) => file.reviewStatus === "pending"))}
-										style={buttonStyle}
-									>
-										Review pending
-									</button>
+							<div style={{ display: "flex", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
+								{crumbButton("Camera sites", cameraBrowse.level === "home" ? undefined : () => setCameraBrowse({ level: "home" }), cameraBrowse.level === "home")}
+								{cameraBrowse.level === "needs-review" || cameraBrowse.level === "needs-review-site" ? (
+									<>
+										<span style={{ color: colors.textMuted }}>/</span>
+										{crumbButton(
+											"Needs review",
+											cameraBrowse.level === "needs-review" ? undefined : () => setCameraBrowse({ level: "needs-review" }),
+											cameraBrowse.level === "needs-review"
+										)}
+									</>
 								) : null}
+								{cameraBrowse.level === "site" || cameraBrowse.level === "needs-review-site" ? (
+									<>
+										<span style={{ color: colors.textMuted }}>/</span>
+										{crumbButton(siteLabel(cameraBrowse.siteId), undefined, true)}
+									</>
+								) : null}
+								<div style={{ marginLeft: "auto", display: "flex", gap: spacing.sm }}>
+									{cameraBrowse.level === "home" ? (
+										<button onClick={openCreateSite} style={primaryButtonStyle}>New camera site</button>
+									) : null}
+								</div>
 							</div>
-							{importing && importProgress ? (
-								<div style={{ display: "grid", gap: spacing.sm, maxWidth: 680 }}>
-									<div style={{ display: "flex", justifyContent: "space-between", fontSize: typography.fontSize.sm, color: colors.textSecondary }}>
-										<span>{importProgress.stage === "converting" ? "Converting video" : "Importing folder"}: {importProgress.fileName || "Scanning…"}</span>
-										<span>{importProgress.processed} / {importProgress.total}</span>
+
+							{creatingSite && cameraBrowse.level === "home" ? (
+								<div
+									style={{
+										display: "grid",
+										gap: spacing.md,
+										padding: spacing.xl,
+										border: `1px solid ${colors.borderMedium}`,
+										borderRadius: borderRadius.lg,
+										background: colors.bgSecondary
+									}}
+								>
+									<div style={{ fontWeight: typography.fontWeight.semibold }}>New camera site</div>
+									<div style={{ display: "flex", gap: spacing.md, flexWrap: "wrap", alignItems: "end" }}>
+										<label style={{ display: "grid", gap: spacing.xs, minWidth: 220 }}>
+											<span style={{ fontSize: typography.fontSize.sm, color: colors.textSecondary }}>Location name</span>
+											<input
+												value={newSiteName}
+												onChange={(event) => setNewSiteName(event.target.value)}
+												onKeyDown={(event) => {
+													if (event.key === "Enter" && newSiteName.trim()) void handleCreateSite();
+												}}
+												placeholder="Oak Ridge, Food Plot, etc."
+												style={inputStyle}
+											/>
+										</label>
+										{properties.length > 1 ? (
+											<label style={{ display: "grid", gap: spacing.xs, minWidth: 160 }}>
+												<span style={{ fontSize: typography.fontSize.sm, color: colors.textSecondary }}>Property</span>
+												<select
+													value={newSitePropertyId}
+													onChange={(event) => {
+														const nextId = event.target.value;
+														setNewSitePropertyId(nextId);
+														const property = properties.find((item) => item.id === nextId);
+														if (property && (!newSiteArea || newSiteArea === propertyNames.get(newSitePropertyId))) {
+															setNewSiteArea(property.name);
+														}
+													}}
+													style={inputStyle}
+												>
+													{properties.map((property) => (
+														<option key={property.id} value={property.id}>
+															{property.name}
+														</option>
+													))}
+												</select>
+											</label>
+										) : null}
+										<label style={{ display: "grid", gap: spacing.xs, minWidth: 160 }}>
+											<span style={{ fontSize: typography.fontSize.sm, color: colors.textSecondary }}>Area</span>
+											<input
+												list="trail-camera-areas"
+												value={newSiteArea}
+												onChange={(event) => setNewSiteArea(event.target.value)}
+												placeholder="Camp or Leacock"
+												style={inputStyle}
+											/>
+										</label>
+										<button
+											onClick={() => void handleCreateSite()}
+											disabled={!newSiteName.trim()}
+											style={{ ...primaryButtonStyle, opacity: newSiteName.trim() ? 1 : 0.55 }}
+										>
+											Create site
+										</button>
+										<button
+											onClick={() => setCreatingSite(false)}
+											style={buttonStyle}
+										>
+											Cancel
+										</button>
 									</div>
-									<div style={{ height: 8, borderRadius: borderRadius.full, background: colors.borderMedium, overflow: "hidden" }}>
-										<div
-											style={{
-												height: "100%",
-												width: `${importProgress.total ? Math.round((importProgress.processed / importProgress.total) * 100) : 0}%`,
-												background: colors.primary,
-												transition: "width 0.2s ease"
-											}}
-										/>
-									</div>
-									<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>
-										Large AVI cards can take a while because videos are converted for playback. Keep the SD card connected.
-									</div>
-								</div>
-							) : null}
-							{folders.length && selectedSite ? (
-								<div style={{ display: "flex", gap: spacing.sm, alignItems: "center", flexWrap: "wrap" }}>
-									<select value={existingFolderId} onChange={(event) => setExistingFolderId(event.target.value)} style={{ ...inputStyle, minWidth: 240 }}>
-										<option value="">Choose an existing My Content folder…</option>
-										{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.path}</option>)}
-									</select>
-									<button
-										onClick={() => void linkExistingFolderToSite()}
-										disabled={!selectedSite || !existingFolderId}
-										style={{ ...buttonStyle, opacity: selectedSite && existingFolderId ? 1 : 0.55 }}
-									>
-										Link folder to this site
-									</button>
-									<span style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>Links existing files in place; nothing is copied.</span>
 								</div>
 							) : null}
 
-							{!sites.length ? (
-								<div style={{ padding: spacing.xxl, border: `1px dashed ${colors.borderStrong}`, borderRadius: borderRadius.lg }}>
-									Add or import a Trail Camera point on the map first, then return here to import its SD card.
+							{cameraBrowse.level === "home" ? (
+								<div style={folderGridStyle}>
+									<FolderCard
+										title="Needs review"
+										subtitle="Files that still need a classification"
+										meta={`${reviewNeededFiles.length} file${reviewNeededFiles.length === 1 ? "" : "s"}`}
+										accent="review"
+										onClick={() => setCameraBrowse({ level: "needs-review" })}
+									/>
+									{showUnassignedFolder
+										? renderLocationFolder(UNASSIGNED_SITE_ID, unassignedFiles, () =>
+												setCameraBrowse({ level: "site", siteId: UNASSIGNED_SITE_ID })
+										  )
+										: null}
+									{sites.map((site) =>
+										renderLocationFolder(site.id, filesForSite(activeFiles, site.id), () =>
+											setCameraBrowse({ level: "site", siteId: site.id })
+										)
+									)}
 								</div>
-							) : (
-								<div style={{ display: "flex", gap: spacing.xxl, color: colors.textSecondary, fontSize: typography.fontSize.sm }}>
-									<span>{selectedSiteFiles.length} media file(s)</span>
-									<span>{selectedSiteFiles.filter((file) => file.reviewStatus === "pending").length} need review</span>
-									{selectedSite ? <span>{importSessions.filter((session) => session.cameraSiteId === selectedSiteId).length} import session(s)</span> : <span>Assign these files by opening them below.</span>}
-								</div>
-							)}
-
-							{selectedSiteFiles.length ? renderGrid(selectedSiteFiles) : sites.length ? (
-								<div style={{ color: colors.textMuted }}>{selectedSite ? "No media imported for this camera site yet." : "No unassigned media."}</div>
 							) : null}
+
+							{cameraBrowse.level === "needs-review" ? (
+								reviewNeededFiles.length ? (
+									<div style={folderGridStyle}>
+										{pendingSiteIds.map((siteId) =>
+											renderLocationFolder(siteId, pendingBySiteId.get(siteId) || [], () =>
+												setCameraBrowse({ level: "needs-review-site", siteId })
+											)
+										)}
+									</div>
+								) : (
+									<div style={{ color: colors.textMuted }}>Everything is reviewed.</div>
+								)
+							) : null}
+
+							{cameraBrowse.level === "site" || cameraBrowse.level === "needs-review-site" ? (
+								<div style={{ display: "grid", gap: spacing.xxl }}>
+									{cameraBrowse.level === "site" && selectedSite ? (
+										<div style={{ display: "flex", gap: spacing.md, alignItems: "end", flexWrap: "wrap" }}>
+											<label style={{ display: "grid", gap: spacing.xs, minWidth: 160 }}>
+												<span style={{ fontSize: typography.fontSize.sm, color: colors.textSecondary }}>Area</span>
+												<input
+													list="trail-camera-areas"
+													value={areaName}
+													onChange={(event) => setAreaName(event.target.value)}
+													onBlur={() => areaName.trim() && void saveCameraArea(areaName)}
+													placeholder="Camp or Leacock"
+													style={inputStyle}
+												/>
+											</label>
+											<button
+												onClick={() => void handleImport()}
+												disabled={importing}
+												style={{ ...primaryButtonStyle, opacity: importing ? 0.55 : 1 }}
+											>
+												{importing ? "Importing…" : "Import SD Card Folder"}
+											</button>
+											{visibleSiteFiles.some(fileNeedsReview) ? (
+												<button
+													onClick={() => startReview(visibleSiteFiles.filter(fileNeedsReview))}
+													style={buttonStyle}
+												>
+													Review pending
+												</button>
+											) : null}
+										</div>
+									) : null}
+									{cameraBrowse.level === "needs-review-site" && visibleSiteFiles.length ? (
+										<div>
+											<button
+												onClick={() => startReview(visibleSiteFiles)}
+												style={primaryButtonStyle}
+											>
+												Review {visibleSiteFiles.length} file{visibleSiteFiles.length === 1 ? "" : "s"}
+											</button>
+										</div>
+									) : null}
+									{importing && importProgress ? (
+										<div style={{ display: "grid", gap: spacing.sm, maxWidth: 680 }}>
+											<div style={{ display: "flex", justifyContent: "space-between", fontSize: typography.fontSize.sm, color: colors.textSecondary }}>
+												<span>{importProgress.stage === "converting" ? "Converting video" : "Importing folder"}: {importProgress.fileName || "Scanning…"}</span>
+												<span>{importProgress.processed} / {importProgress.total}</span>
+											</div>
+											<div style={{ height: 8, borderRadius: borderRadius.full, background: colors.borderMedium, overflow: "hidden" }}>
+												<div
+													style={{
+														height: "100%",
+														width: `${importProgress.total ? Math.round((importProgress.processed / importProgress.total) * 100) : 0}%`,
+														background: colors.primary,
+														transition: "width 0.2s ease"
+													}}
+												/>
+											</div>
+											<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>
+												Large AVI cards can take a while because videos are converted for playback. Keep the SD card connected.
+											</div>
+										</div>
+									) : null}
+									{folders.length && selectedSite && cameraBrowse.level === "site" ? (
+										<div style={{ display: "flex", gap: spacing.sm, alignItems: "center", flexWrap: "wrap" }}>
+											<select value={existingFolderId} onChange={(event) => setExistingFolderId(event.target.value)} style={{ ...inputStyle, minWidth: 240 }}>
+												<option value="">Choose an existing My Content folder…</option>
+												{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.path}</option>)}
+											</select>
+											<button
+												onClick={() => void linkExistingFolderToSite()}
+												disabled={!existingFolderId}
+												style={{ ...buttonStyle, opacity: existingFolderId ? 1 : 0.55 }}
+											>
+												Link folder to this site
+											</button>
+											<span style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>Links existing files in place; nothing is copied.</span>
+										</div>
+									) : null}
+
+									<div style={{ display: "flex", gap: spacing.xxl, color: colors.textSecondary, fontSize: typography.fontSize.sm }}>
+										<span>{visibleSiteFiles.length} media file{visibleSiteFiles.length === 1 ? "" : "s"}</span>
+										<span>{visibleSiteFiles.filter(fileNeedsReview).length} need review</span>
+										{selectedSite ? (
+											<span>
+												{importSessions.filter((session) => session.cameraSiteId === selectedSite.id).length} import session
+												{importSessions.filter((session) => session.cameraSiteId === selectedSite.id).length === 1 ? "" : "s"}
+											</span>
+										) : (
+											<span>Assign these files by opening them.</span>
+										)}
+									</div>
+
+									{visibleSiteFiles.length ? (
+										renderGroupedGrid(visibleSiteFiles)
+									) : (
+										<div style={{ color: colors.textMuted }}>
+											{cameraBrowse.level === "needs-review-site"
+												? "Nothing left to review for this location."
+												: selectedSite
+												? "No media imported for this camera site yet."
+												: "No unassigned media."}
+										</div>
+									)}
+								</div>
+							) : null}
+
+							<datalist id="trail-camera-areas">
+								<option value="Camp" />
+								<option value="Leacock" />
+								{properties.map((property) => (
+									<option key={property.id} value={property.name} />
+								))}
+							</datalist>
 						</div>
 					) : null}
 
 					{!loading && view === "deer" ? (
-						<div style={{ display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)", gap: spacing.xxl, height: "100%" }}>
-							<aside style={{ borderRight: `1px solid ${colors.border}`, paddingRight: spacing.xl }}>
-								<div style={{ fontWeight: typography.fontWeight.semibold, marginBottom: spacing.md }}>Known deer</div>
-								<div style={{ display: "grid", gap: spacing.sm }}>
-									{knownDeer.map((deer) => (
-										<button
-											key={deer.id}
-											onClick={() => setSelectedDeerId(deer.id)}
-											style={{
-												...buttonStyle,
-												textAlign: "left",
-												background: selectedDeerId === deer.id ? colors.primaryLight : colors.bgButton
-											}}
-										>
-											{deer.name}
-										</button>
-									))}
-								</div>
-								<div style={{ marginTop: spacing.xl, display: "grid", gap: spacing.sm }}>
-									<input
-										value={newDeerName}
-										onChange={(event) => setNewDeerName(event.target.value)}
-										placeholder="New deer name"
-										style={inputStyle}
-									/>
-									<button onClick={() => void createKnownDeer()} disabled={!newDeerName.trim()} style={buttonStyle}>Add known deer</button>
-								</div>
-								{folders.length ? (
-									<div style={{ marginTop: spacing.xl, paddingTop: spacing.lg, borderTop: `1px solid ${colors.border}`, display: "grid", gap: spacing.sm }}>
-										<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>Use an existing deer folder</div>
-										<select value={existingFolderId} onChange={(event) => setExistingFolderId(event.target.value)} style={inputStyle}>
-											<option value="">Choose folder…</option>
-											{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.path}</option>)}
-										</select>
-										<button onClick={() => void createDeerFromFolder()} disabled={!existingFolderId} style={buttonStyle}>Create deer from folder</button>
-									</div>
-								) : null}
-							</aside>
-							<section>
-								{selectedDeerId ? (
+						<div style={{ display: "grid", gap: spacing.xxl }}>
+							<div style={{ display: "flex", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
+								{crumbButton("Known deer", deerBrowse === "home" ? undefined : () => setDeerBrowse("home"), deerBrowse === "home")}
+								{deerBrowse === "deer" && selectedDeerId ? (
 									<>
-										<h3 style={{ marginTop: 0 }}>{deerNames.get(selectedDeerId)}</h3>
-										<div style={{ marginBottom: spacing.xl, color: colors.textMuted, fontSize: typography.fontSize.sm }}>
-											{selectedDeerFiles.length} appearance(s) across camera sites
-										</div>
-										{selectedDeerFiles.length ? renderGrid(selectedDeerFiles) : <div>No media tagged to this deer yet.</div>}
+										<span style={{ color: colors.textMuted }}>/</span>
+										{crumbButton(deerNames.get(selectedDeerId) || "Deer", undefined, true)}
 									</>
-								) : (
-									<div style={{ color: colors.textMuted }}>Choose a known deer or add one to start its timeline.</div>
-								)}
-							</section>
+								) : null}
+							</div>
+
+							{deerBrowse === "home" ? (
+								<>
+									<div style={{ display: "flex", gap: spacing.sm, flexWrap: "wrap", alignItems: "center" }}>
+										<input
+											value={newDeerName}
+											onChange={(event) => setNewDeerName(event.target.value)}
+											placeholder="New deer name"
+											style={{ ...inputStyle, minWidth: 200 }}
+										/>
+										<button onClick={() => void createKnownDeer()} disabled={!newDeerName.trim()} style={buttonStyle}>
+											Add known deer
+										</button>
+										{folders.length ? (
+											<>
+												<select value={existingFolderId} onChange={(event) => setExistingFolderId(event.target.value)} style={inputStyle}>
+													<option value="">Use existing folder…</option>
+													{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.path}</option>)}
+												</select>
+												<button onClick={() => void createDeerFromFolder()} disabled={!existingFolderId} style={buttonStyle}>
+													Create deer from folder
+												</button>
+											</>
+										) : null}
+									</div>
+									{knownDeer.length ? (
+										<div style={folderGridStyle}>
+											{knownDeer.map((deer) => {
+												const deerFiles = sortByDate(activeFiles.filter((file) => file.knownDeerIds?.includes(deer.id)));
+												const cover = deerFiles[0];
+												return (
+													<FolderCard
+														key={deer.id}
+														title={deer.name}
+														meta={[
+															`${deerFiles.length} appearance${deerFiles.length === 1 ? "" : "s"}`,
+															latestDateLabel(deerFiles)
+														]
+															.filter(Boolean)
+															.join(" · ")}
+														preview={cover ? <MediaPreview file={cover} /> : <div style={{ fontSize: 36 }}>🦌</div>}
+														onClick={() => {
+															setSelectedDeerId(deer.id);
+															setDeerBrowse("deer");
+														}}
+													/>
+												);
+											})}
+										</div>
+									) : (
+										<div style={{ color: colors.textMuted }}>Add a known deer to start its folder and timeline.</div>
+									)}
+								</>
+							) : (
+								<section>
+									<div style={{ marginBottom: spacing.xl, color: colors.textMuted, fontSize: typography.fontSize.sm }}>
+										{selectedDeerFiles.length} appearance{selectedDeerFiles.length === 1 ? "" : "s"} across camera sites
+									</div>
+									{selectedDeerFiles.length ? renderGroupedGrid(selectedDeerFiles) : <div>No media tagged to this deer yet.</div>}
+								</section>
+							)}
 						</div>
 					) : null}
 
 					{!loading && view === "trash" ? (
 						<div style={{ display: "grid", gap: spacing.lg }}>
 							<div style={{ color: colors.textMuted, fontSize: typography.fontSize.sm }}>
-								Blank and misfire files are hidden from normal views but kept safely on disk. Restore keeps their camera and review metadata.
+								Blank and misfire files are hidden from normal views but kept safely on disk. Restore keeps their camera and review metadata. Restoring does not put a deleted original back on the SD card.
 							</div>
 							{trashedFiles.map((file) => (
 								<div key={file.id} style={{ display: "flex", alignItems: "center", gap: spacing.lg, padding: spacing.md, border: `1px solid ${colors.border}`, borderRadius: borderRadius.lg }}>
 									<div style={{ width: 100, height: 70, overflow: "hidden", borderRadius: borderRadius.md }}><MediaPreview file={file} /></div>
 									<div style={{ flex: 1 }}>
 										<div style={{ fontWeight: typography.fontWeight.semibold }}>{file.name}</div>
-										<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>{siteNames.get(file.cameraSiteId || "") || "Unknown camera"}</div>
+										<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>
+											{siteNames.get(file.cameraSiteId || "") || "Unknown camera"}
+											{" · "}
+											{formatCaptureDateTime(file.capturedAt || file.trashedAt)}
+										</div>
 									</div>
 									<button onClick={() => void restoreFile(file)} style={buttonStyle}>Restore</button>
 								</div>
@@ -860,9 +1399,9 @@ export default function TrailCameraMediaManager({
 									<div style={{ fontWeight: typography.fontWeight.semibold, marginTop: spacing.xs }}>
 										{currentReviewFile?.name || "All files reviewed"}
 									</div>
-									{currentReviewFile?.capturedAt ? (
+									{currentReviewFile ? (
 										<div style={{ fontSize: typography.fontSize.sm, color: colors.textMuted }}>
-											{new Date(currentReviewFile.capturedAt).toLocaleString()}
+											{formatCaptureDateTime(currentReviewFile.capturedAt || currentReviewFile.createdAt)}
 										</div>
 									) : null}
 								</div>
@@ -941,12 +1480,19 @@ export default function TrailCameraMediaManager({
 											<button onClick={() => void classifyCurrent("doe")} style={buttonStyle}>Doe</button>
 											<button onClick={() => void classifyCurrent("other_animal")} style={buttonStyle}>Other animal</button>
 											<button onClick={() => void classifyCurrent("blank")} style={{ ...buttonStyle, color: colors.error }}>Blank / misfire</button>
+											<div style={{ gridColumn: "1 / -1", fontSize: typography.fontSize.xs, color: colors.textMuted }}>
+												{currentReviewFile.sourceDeletedAt
+													? "SD card original already deleted."
+													: currentReviewFile.sourcePath || currentReviewFile.sourceRelativePath
+													? "Blank / misfire also deletes the original on the SD card if the card is still connected."
+													: "No SD card original is recorded for this file."}
+											</div>
 										</div>
 									</>
 								) : (
 									<button onClick={() => void finishReview()} style={primaryButtonStyle}>Finish review and move blanks to Trash</button>
 								)}
-								<button onClick={() => setView("cameras")} style={{ ...buttonStyle, marginTop: "auto" }}>Exit review</button>
+								<button onClick={() => setView(reviewReturnView)} style={{ ...buttonStyle, marginTop: "auto" }}>Exit review</button>
 							</aside>
 						</div>
 					) : null}

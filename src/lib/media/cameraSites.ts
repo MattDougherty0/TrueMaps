@@ -1,4 +1,4 @@
-import { propertyScopedGeoJSONPath } from "../geo/propertyScopedFiles";
+import { emptyFeatureCollectionString, propertyScopedGeoJSONPath } from "../geo/propertyScopedFiles";
 
 export type CameraSite = {
 	id: string;
@@ -10,7 +10,7 @@ export type CameraSite = {
 
 type CameraFeature = {
 	type?: string;
-	geometry?: { type?: string; coordinates?: unknown };
+	geometry?: { type?: string; coordinates?: unknown } | null;
 	properties?: Record<string, unknown>;
 };
 
@@ -49,6 +49,54 @@ const pointCoordinates = (feature: CameraFeature): [number, number] | null => {
 	return [coordinates[0], coordinates[1]];
 };
 
+const writeCameraCollection = async (
+	projectPath: string,
+	relativePath: string,
+	collection: CameraFeatureCollection,
+	features: CameraFeature[]
+): Promise<void> => {
+	const content = JSON.stringify({ ...collection, type: "FeatureCollection", features }, null, 2);
+	if (typeof window.api.atomicWriteTextFile === "function") {
+		await window.api.atomicWriteTextFile(projectPath, relativePath, content);
+	} else {
+		await window.api.writeTextFile(projectPath, relativePath, content);
+	}
+	window.dispatchEvent(new Event("layer:reload:trail_cameras"));
+};
+
+const parseCollection = (text: string): { collection: CameraFeatureCollection; features: CameraFeature[] } => {
+	const collection = JSON.parse(text) as CameraFeatureCollection;
+	const features = Array.isArray(collection.features) ? collection.features : [];
+	return { collection, features };
+};
+
+const resolveCameraSitesFile = async (
+	projectPath: string,
+	propertyId: string | null
+): Promise<{ relativePath: string; collection: CameraFeatureCollection; features: CameraFeature[] }> => {
+	const scopedPath = propertyScopedGeoJSONPath("data/trail_cameras.geojson", propertyId);
+	try {
+		const text = await window.api.readTextFile(projectPath, scopedPath);
+		const parsed = parseCollection(text);
+		return { relativePath: scopedPath, ...parsed };
+	} catch {
+		if (!propertyId || propertyId === "default") {
+			try {
+				const text = await window.api.readTextFile(projectPath, "data/trail_cameras.geojson");
+				const parsed = parseCollection(text);
+				return { relativePath: "data/trail_cameras.geojson", ...parsed };
+			} catch {
+				// Fall through and seed an empty collection at the scoped path.
+			}
+		}
+		return {
+			relativePath: scopedPath,
+			collection: JSON.parse(emptyFeatureCollectionString()) as CameraFeatureCollection,
+			features: []
+		};
+	}
+};
+
 export const cameraSiteId = (
 	name: string,
 	coordinates: [number, number] | null,
@@ -61,17 +109,10 @@ export async function loadCameraSites(
 	projectPath: string,
 	propertyId: string | null
 ): Promise<CameraSite[]> {
-	let relativePath = propertyScopedGeoJSONPath("data/trail_cameras.geojson", propertyId);
-	let text: string;
-	try {
-		text = await window.api.readTextFile(projectPath, relativePath);
-	} catch (error) {
-		if (propertyId !== "default") throw error;
-		relativePath = "data/trail_cameras.geojson";
-		text = await window.api.readTextFile(projectPath, relativePath);
+	const { relativePath, collection, features } = await resolveCameraSitesFile(projectPath, propertyId);
+	if (!features.length && relativePath) {
+		return [];
 	}
-	const collection = JSON.parse(text) as CameraFeatureCollection;
-	const features = Array.isArray(collection.features) ? collection.features : [];
 	let changed = false;
 
 	const sites = features
@@ -100,16 +141,51 @@ export async function loadCameraSites(
 		.sort((a, b) => a.name.localeCompare(b.name));
 
 	if (changed) {
-		const content = JSON.stringify({ ...collection, type: "FeatureCollection", features }, null, 2);
-		if (typeof window.api.atomicWriteTextFile === "function") {
-			await window.api.atomicWriteTextFile(projectPath, relativePath, content);
-		} else {
-			await window.api.writeTextFile(projectPath, relativePath, content);
-		}
-		window.dispatchEvent(new Event("layer:reload:trail_cameras"));
+		await writeCameraCollection(projectPath, relativePath, collection, features);
 	}
 
 	return sites;
+}
+
+export async function createCameraSite(
+	projectPath: string,
+	input: {
+		name: string;
+		propertyId: string | null;
+		areaName: string | null;
+		coordinates?: [number, number] | null;
+	}
+): Promise<CameraSite> {
+	const name = input.name.trim();
+	if (!name) throw new Error("Camera site name is required");
+	const { relativePath, collection, features } = await resolveCameraSitesFile(projectPath, input.propertyId);
+	const coordinates = input.coordinates || null;
+	const id = cameraSiteId(name, coordinates, input.propertyId, Date.now());
+	const now = new Date().toISOString();
+	const site: CameraSite = {
+		id,
+		name,
+		propertyId: input.propertyId,
+		areaName: input.areaName?.trim() || null,
+		coordinates
+	};
+
+	if (coordinates) {
+		features.push({
+			type: "Feature",
+			geometry: { type: "Point", coordinates },
+			properties: {
+				name,
+				camera_site_id: id,
+				area_name: site.areaName,
+				camera_type: "trail",
+				created_at: now
+			}
+		});
+		await writeCameraCollection(projectPath, relativePath, collection, features);
+	}
+
+	return site;
 }
 
 export async function updateCameraSiteArea(
@@ -118,26 +194,10 @@ export async function updateCameraSiteArea(
 	siteId: string,
 	areaName: string
 ): Promise<void> {
-	let relativePath = propertyScopedGeoJSONPath("data/trail_cameras.geojson", propertyId);
-	let text: string;
-	try {
-		text = await window.api.readTextFile(projectPath, relativePath);
-	} catch (error) {
-		if (propertyId !== "default") throw error;
-		relativePath = "data/trail_cameras.geojson";
-		text = await window.api.readTextFile(projectPath, relativePath);
-	}
-	const collection = JSON.parse(text) as CameraFeatureCollection;
-	const features = Array.isArray(collection.features) ? collection.features : [];
+	const { relativePath, collection, features } = await resolveCameraSitesFile(projectPath, propertyId);
 	const feature = features.find((item) => item.properties?.camera_site_id === siteId);
 	if (!feature) throw new Error("Camera site not found");
 	feature.properties = feature.properties || {};
 	feature.properties.area_name = areaName.trim();
-	const content = JSON.stringify({ ...collection, type: "FeatureCollection", features }, null, 2);
-	if (typeof window.api.atomicWriteTextFile === "function") {
-		await window.api.atomicWriteTextFile(projectPath, relativePath, content);
-	} else {
-		await window.api.writeTextFile(projectPath, relativePath, content);
-	}
-	window.dispatchEvent(new Event("layer:reload:trail_cameras"));
+	await writeCameraCollection(projectPath, relativePath, collection, features);
 }

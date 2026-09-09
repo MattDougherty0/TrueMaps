@@ -16,6 +16,7 @@ electron_1.contextBridge.exposeInMainWorld("api", {
     resolveMediaPath: (baseDir, relativePath) => electron_1.ipcRenderer.invoke("media:resolvePath", baseDir, relativePath),
     hashMediaFiles: (baseDir, mediaPaths) => electron_1.ipcRenderer.invoke("media:hashFiles", baseDir, mediaPaths),
     deleteFile: (absolutePath) => electron_1.ipcRenderer.invoke("media:deleteFile", absolutePath),
+    deleteTrailCameraSource: (payload) => electron_1.ipcRenderer.invoke("media:deleteTrailCameraSource", payload),
     listMediaFolder: (baseDir, relativeFolderPath) => electron_1.ipcRenderer.invoke("media:listFolder", baseDir, relativeFolderPath),
     importMediaFolder: (baseDir, sourceDirAbsolutePath, targetFolderPath) => electron_1.ipcRenderer.invoke("media:importFolder", baseDir, sourceDirAbsolutePath, targetFolderPath),
     importTrailCameraMedia: (baseDir, sourceDirAbsolutePath, targetFolderPath, knownHashes) => electron_1.ipcRenderer.invoke("media:importTrailCamera", baseDir, sourceDirAbsolutePath, targetFolderPath, knownHashes),
