@@ -28,7 +28,7 @@ const DEFAULT_TERRARIUM_TEMPLATE =
 const cleanString = (value: unknown): string | undefined =>
 	typeof value === "string" && value.trim().length ? value.trim() : undefined;
 
-const clampExaggeration = (value: number) => Math.min(8, Math.max(0.5, Number.isFinite(value) ? value : 1));
+const clampExaggeration = (value: number) => Math.min(4, Math.max(0.8, Number.isFinite(value) ? value : 1.3));
 const clampPitch = (value: number) => Math.min(89, Math.max(30, Number.isFinite(value) ? value : 85));
 
 const storedIonToken =
@@ -41,7 +41,7 @@ const initialTerrarium = cleanString(envTerrariumUrl) ?? DEFAULT_TERRARIUM_TEMPL
 const terrainStore = createStore<TerrainState>((set) => ({
 	// Always start in 2D. Cesium/OLCesium is constructed on first enable.
 	enabled: false,
-	verticalExaggeration: 1.6,
+	verticalExaggeration: 1.3,
 	maxPitch: 85,
 	ionToken: initialIonToken,
 	terrainUrl: initialTerrainUrl,

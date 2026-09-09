@@ -34,6 +34,7 @@ export default function BasemapToggles() {
 			setHistEnabled(false);
 			setVisible("topo", false);
 			setVisible("aerial", true);
+			setVisible("topoOverlay", true);
 			return;
 		}
 		// historical
@@ -180,6 +181,18 @@ export default function BasemapToggles() {
 						Historical imagery is **2D-only** for now (to keep 3D reliable + fast).
 					</div>
 				) : null}
+				<div style={{ gridColumn: "1 / -1", fontSize: typography.fontSize.sm, color: colors.textMuted, marginTop: spacing.xs }}>
+					Overlays (stay on with Aerial)
+				</div>
+				<label style={{ display: "flex", alignItems: "center", gap: spacing.sm, cursor: "pointer", color: colors.textPrimary }}>
+					<input
+						type="checkbox"
+						checked={visible.topoOverlay}
+						onChange={(e) => setVisible("topoOverlay", e.target.checked)}
+						style={{ accentColor: colors.primary, cursor: "pointer" }}
+					/>
+					Topo / creeks
+				</label>
 				<label style={{ display: "flex", alignItems: "center", gap: spacing.sm, cursor: "pointer", color: colors.textPrimary }}>
 					<input
 						type="checkbox"
@@ -205,7 +218,7 @@ export default function BasemapToggles() {
 						onChange={(e) => setVisible("contours", e.target.checked)}
 						style={{ accentColor: colors.primary, cursor: "pointer" }}
 					/>
-					Contours
+					Contour lines
 				</label>
 			</div>
 			<hr style={{ border: "none", borderTop: `1px solid ${colors.borderMedium}`, margin: `${spacing.md} 0` }} />

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type BasemapKey = "topo" | "aerial" | "hillshade" | "slope" | "contours";
+export type BasemapKey = "topo" | "aerial" | "hillshade" | "slope" | "contours" | "topoOverlay";
 
 type BasemapState = {
 	visible: Record<BasemapKey, boolean>;
@@ -13,7 +13,8 @@ export const useBasemapStore = create<BasemapState>((set) => ({
 		aerial: false,
 		hillshade: true,
 		slope: false,
-		contours: true
+		contours: true,
+		topoOverlay: true
 	},
 	setVisible: (key, value) =>
 		set((s) => ({ visible: { ...s.visible, [key]: value } }))
