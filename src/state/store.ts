@@ -20,6 +20,7 @@ type AppState = {
 	activePropertyId: string | null;
 	createNewProject: () => Promise<void>;
 	openExistingProject: () => Promise<void>;
+	openProjectAt: (projectDir: string) => Promise<void>;
 	setCrsFromLonLat: (lon: number, lat: number) => Promise<void>;
 	setHasBoundary: (value: boolean) => void;
 	setPendingView: (payload: { lon: number; lat: number; zoom?: number } | null) => void;
@@ -112,6 +113,58 @@ const normalizeSelection = (raw: string) => {
 	return { projectDir: normalized, selectedFile: null };
 };
 
+async function hydrateExistingProject(
+	set: (partial: Partial<AppState>) => void,
+	projectDir: string
+) {
+	const pjStr = await window.api.readTextFile(projectDir, "project.json");
+	const pj = JSON.parse(pjStr) as { name?: string; properties?: unknown; activePropertyId?: unknown };
+	window.api.setActiveProject(projectDir);
+	const props =
+		normalizeProperties((pj as any)?.properties) ??
+		[{ id: "default", name: "Property", boundaryFile: "property_boundary.geojson" }];
+	let nextActiveId = normalizePropertyId((pj as any)?.activePropertyId);
+	if (nextActiveId && !props.some((p) => p.id === nextActiveId)) {
+		nextActiveId = null;
+	}
+	if (!nextActiveId) {
+		nextActiveId = props[0]?.id || null;
+	}
+
+	try {
+		await Promise.all(
+			props.map(async (p) => {
+				try {
+					await window.api.readTextFile(projectDir, `data/${p.boundaryFile}`);
+				} catch {
+					const emptyFC = JSON.stringify({ type: "FeatureCollection", features: [] }, null, 2);
+					await window.api.writeTextFile(projectDir, `data/${p.boundaryFile}`, emptyFC);
+				}
+			})
+		);
+	} catch {
+		// non-fatal
+	}
+
+	const activeBoundaryFile = getActiveBoundaryFile({
+		properties: props,
+		activePropertyId: nextActiveId
+	});
+	const { exists: boundaryExists, center: boundaryCenter } = nextActiveId
+		? await readBoundaryCenter(projectDir, activeBoundaryFile)
+		: { exists: false, center: null };
+
+	set({
+		projectPath: projectDir,
+		projectName: pj?.name || "Unnamed Project",
+		loading: false,
+		hasBoundary: boundaryExists,
+		pendingView: boundaryCenter ? { lon: boundaryCenter[0], lat: boundaryCenter[1], zoom: 16 } : null,
+		properties: props,
+		activePropertyId: nextActiveId
+	});
+}
+
 const useAppStore = create<AppState>((set) => ({
 	projectPath: null,
 	projectName: null,
@@ -164,60 +217,17 @@ const useAppStore = create<AppState>((set) => ({
 				set({ loading: false });
 				return;
 			}
-			const { projectDir } = normalizeSelection(selection);
-			const pjStr = await window.api.readTextFile(projectDir, "project.json");
-			const pj = JSON.parse(pjStr) as { name?: string; properties?: unknown; activePropertyId?: unknown };
-			window.api.setActiveProject(projectDir);
-			const props =
-				normalizeProperties((pj as any)?.properties) ??
-				[{ id: "default", name: "Property", boundaryFile: "property_boundary.geojson" }];
-			let nextActiveId = normalizePropertyId((pj as any)?.activePropertyId);
-			if (nextActiveId && !props.some((p) => p.id === nextActiveId)) {
-				nextActiveId = null;
-			}
-			// If the project has properties but no active selection yet, default to the first property.
-			// Users can switch via the Property dropdown in the UI.
-			if (!nextActiveId) {
-				nextActiveId = props[0]?.id || null;
-			}
-
-			// Layers auto-seed missing GeoJSON on first visible load — skip the sequential
-			// open-time probe of every data/*.geojson file (was a blocking IPC storm).
-
-			// Seed additional boundary files for multi-property projects in parallel
-			try {
-				await Promise.all(
-					props.map(async (p) => {
-						try {
-							await window.api.readTextFile(projectDir, `data/${p.boundaryFile}`);
-						} catch {
-							const emptyFC = JSON.stringify({ type: "FeatureCollection", features: [] }, null, 2);
-							await window.api.writeTextFile(projectDir, `data/${p.boundaryFile}`, emptyFC);
-						}
-					})
-				);
-			} catch {
-				// non-fatal
-			}
-
-			// Only auto-zoom if we already know which property is active
-			const activeBoundaryFile = getActiveBoundaryFile({
-				properties: props,
-				activePropertyId: nextActiveId
-			});
-			const { exists: boundaryExists, center: boundaryCenter } = nextActiveId
-				? await readBoundaryCenter(projectDir, activeBoundaryFile)
-				: { exists: false, center: null };
-
-			set({
-				projectPath: projectDir,
-				projectName: pj?.name || "Unnamed Project",
-				loading: false,
-				hasBoundary: boundaryExists,
-				pendingView: boundaryCenter ? { lon: boundaryCenter[0], lat: boundaryCenter[1], zoom: 16 } : null,
-				properties: props,
-				activePropertyId: nextActiveId
-			});
+			await hydrateExistingProject(set, normalizeSelection(selection).projectDir);
+		} catch (err) {
+			console.error("open project failed", err);
+			window.alert("That folder doesn’t look like a TRUE MAP project yet.");
+			set({ loading: false });
+		}
+	},
+	openProjectAt: async (projectDir: string) => {
+		set({ loading: true });
+		try {
+			await hydrateExistingProject(set, projectDir);
 		} catch (err) {
 			console.error("open project failed", err);
 			window.alert("That folder doesn’t look like a TRUE MAP project yet.");

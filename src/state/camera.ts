@@ -28,8 +28,8 @@ const clampHeight = (value: number) => {
 
 const cameraStore = createStore<CameraState>((set) => ({
 	heading: 315,
-	pitch: 45,
-	height: 1200,
+	pitch: 52,
+	height: 700,
 	setHeading: (deg: number) => set({ heading: normalizeHeading(deg) }),
 	setPitch: (deg: number) => set({ pitch: clampPitch(deg) }),
 	setHeight: (meters: number) => set({ height: clampHeight(meters) })
