@@ -11,6 +11,7 @@ import AnimalPathsLayer from "./layers/AnimalPathsLayer";
 import AnimalSignLayer from "./layers/AnimalSignLayer";
 import HarvestsLayer from "./layers/HarvestsLayer";
 import AnalyticsToggles from "./AnalyticsToggles";
+import HumanTracksPanel from "./HumanTracksPanel";
 import SightingsHeatmapLayer from "./analytics/SightingsHeatmapLayer";
 import PathDensityLayer from "./analytics/PathDensityLayer";
 import ExportButton from "./ExportButton";
@@ -177,10 +178,13 @@ export default function AppShell() {
 					gap: 8,
 					alignItems: "stretch",
 					zIndex: 1000,
-					width: 260
+					width: 260,
+					maxHeight: "calc(100vh - 24px)",
+					overflowY: "auto"
 				}}
 			>
 				<UserSelector />
+				<HumanTracksPanel />
 				<BasemapToggles />
 				<TerrainControls />
 				<LayerPresets />

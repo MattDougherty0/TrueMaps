@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import useAppStore from "../../state/store";
 import {
 	fileNeedsReview,
@@ -80,6 +80,19 @@ const primaryButtonStyle: CSSProperties = {
 	background: colors.primary,
 	borderColor: colors.primary,
 	color: colors.textOnPrimary
+};
+
+const shortcutHintStyle: CSSProperties = {
+	marginLeft: 6,
+	fontSize: typography.fontSize.xs,
+	fontWeight: typography.fontWeight.semibold,
+	opacity: 0.7
+};
+
+const isTypingTarget = (target: EventTarget | null): boolean => {
+	if (!(target instanceof HTMLElement)) return false;
+	const tag = target.tagName;
+	return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
 };
 
 const sortByDate = (files: MediaFile[]): MediaFile[] =>
@@ -343,6 +356,9 @@ export default function TrailCameraMediaManager({
 	const [newSitePropertyId, setNewSitePropertyId] = useState("");
 	const [newSiteArea, setNewSiteArea] = useState("");
 	const [sdDeleteStats, setSdDeleteStats] = useState({ deleted: 0, missing: 0, failed: 0 });
+	const reviewIndexRef = useRef(0);
+	const reviewIdsRef = useRef<string[]>([]);
+	const selectedDeerIdRef = useRef("");
 
 	useEffect(() => {
 		if (!projectPath) return;
@@ -441,6 +457,16 @@ export default function TrailCameraMediaManager({
 	);
 	const reviewFiles = reviewIds.map((id) => files.find((file) => file.id === id)).filter(Boolean) as MediaFile[];
 	const currentReviewFile = reviewFiles[reviewIndex] || null;
+
+	useEffect(() => {
+		reviewIndexRef.current = reviewIndex;
+	}, [reviewIndex]);
+	useEffect(() => {
+		reviewIdsRef.current = reviewIds;
+	}, [reviewIds]);
+	useEffect(() => {
+		selectedDeerIdRef.current = selectedDeerId;
+	}, [selectedDeerId]);
 	const unassignedFiles = useMemo(() => filesForSite(activeFiles, UNASSIGNED_SITE_ID), [activeFiles]);
 	const pendingBySiteId = useMemo(() => {
 		const counts = new Map<string, MediaFile[]>();
@@ -549,9 +575,12 @@ export default function TrailCameraMediaManager({
 
 	const startReview = (siteFiles: MediaFile[], startId?: string) => {
 		const ids = siteFiles.map((file) => file.id);
+		const nextIndex = Math.max(0, startId ? ids.indexOf(startId) : 0);
+		reviewIdsRef.current = ids;
+		reviewIndexRef.current = nextIndex;
 		setReviewReturnView(view === "deer" ? "deer" : "cameras");
 		setReviewIds(ids);
-		setReviewIndex(Math.max(0, startId ? ids.indexOf(startId) : 0));
+		setReviewIndex(nextIndex);
 		setSdDeleteStats({ deleted: 0, missing: 0, failed: 0 });
 		setView("review");
 	};
@@ -776,30 +805,29 @@ export default function TrailCameraMediaManager({
 	};
 
 	const classifyCurrent = async (classification: MediaClassification) => {
-		if (!projectPath || !currentReviewFile) return;
-		if (
-			classification === "known_buck" &&
-			!selectedDeerId &&
-			!(currentReviewFile.knownDeerIds || []).length
-		) {
+		if (!projectPath) return;
+		const index = reviewIndexRef.current;
+		const fileId = reviewIdsRef.current[index];
+		if (!fileId) return;
+		const file = useMediaStore.getState().files.find((item) => item.id === fileId);
+		if (!file) return;
+		const taggedDeerIds = file.knownDeerIds || [];
+		if (classification === "known_buck" && !selectedDeerIdRef.current && !taggedDeerIds.length) {
 			setMessage("Choose or create a known deer first.");
 			return;
 		}
+		reviewIndexRef.current = index + 1;
+		setReviewIndex(index + 1);
 		const changes: Partial<MediaFile> = {
 			classification,
 			reviewStatus: "reviewed",
 			knownDeerIds:
 				classification === "known_buck"
-					? Array.from(
-							new Set([
-								...(currentReviewFile.knownDeerIds || []),
-								...(selectedDeerId ? [selectedDeerId] : [])
-							])
-					  )
+					? Array.from(new Set([...taggedDeerIds, ...(selectedDeerIdRef.current ? [selectedDeerIdRef.current] : [])]))
 					: []
 		};
 		if (classification === "blank") {
-			const sdStatus = await tryDeleteSourceOriginal(currentReviewFile);
+			const sdStatus = await tryDeleteSourceOriginal(file);
 			if (sdStatus === "deleted") {
 				changes.sourceDeletedAt = new Date().toISOString();
 				setSdDeleteStats((current) => ({ ...current, deleted: current.deleted + 1 }));
@@ -809,10 +837,15 @@ export default function TrailCameraMediaManager({
 				setSdDeleteStats((current) => ({ ...current, failed: current.failed + 1 }));
 			}
 		}
-		updateFile(currentReviewFile.id, changes);
+		updateFile(file.id, changes);
 		await saveToProject(projectPath);
 		setMessage("");
-		setReviewIndex((index) => index + 1);
+	};
+
+	const stepReview = (delta: number) => {
+		const next = Math.min(reviewIdsRef.current.length, Math.max(0, reviewIndexRef.current + delta));
+		reviewIndexRef.current = next;
+		setReviewIndex(next);
 	};
 
 	const finishReview = async () => {
@@ -847,6 +880,63 @@ export default function TrailCameraMediaManager({
 		setReviewIds([]);
 		setReviewIndex(0);
 	};
+
+	useEffect(() => {
+		if (view !== "review") return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.metaKey || event.ctrlKey || event.altKey) return;
+			if (isTypingTarget(event.target)) return;
+			const key = event.key;
+			if (key === "Escape") {
+				event.preventDefault();
+				setView(reviewReturnView);
+				return;
+			}
+			if (reviewIndexRef.current >= reviewIdsRef.current.length) {
+				if (key === "Enter") {
+					event.preventDefault();
+					void finishReview();
+				}
+				return;
+			}
+			if (key === "1" || key === "x" || key === "X") {
+				event.preventDefault();
+				void classifyCurrent("blank");
+				return;
+			}
+			if (key === "2" || key === "d" || key === "D") {
+				event.preventDefault();
+				void classifyCurrent("doe");
+				return;
+			}
+			if (key === "3" || key === "u" || key === "U") {
+				event.preventDefault();
+				void classifyCurrent("unknown_buck");
+				return;
+			}
+			if (key === "4" || key === "o" || key === "O") {
+				event.preventDefault();
+				void classifyCurrent("other_animal");
+				return;
+			}
+			if (key === "5" || key === "k" || key === "K") {
+				event.preventDefault();
+				void classifyCurrent("known_buck");
+				return;
+			}
+			if (key === "ArrowLeft") {
+				event.preventDefault();
+				stepReview(-1);
+				return;
+			}
+			if (key === "ArrowRight") {
+				event.preventDefault();
+				stepReview(1);
+			}
+		};
+		window.addEventListener("keydown", onKeyDown, true);
+		return () => window.removeEventListener("keydown", onKeyDown, true);
+	}, [view, reviewReturnView, classifyCurrent, finishReview]);
 
 	const restoreFile = async (file: MediaFile) => {
 		if (!projectPath) return;
@@ -1472,14 +1562,22 @@ export default function TrailCameraMediaManager({
 													opacity: (currentReviewFile.knownDeerIds || []).length ? 1 : 0.55
 												}}
 											>
-												Keep known buck & next
+												Keep known buck & next<span style={shortcutHintStyle}>5</span>
 											</button>
 										</div>
 										<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: spacing.sm }}>
-											<button onClick={() => void classifyCurrent("unknown_buck")} style={buttonStyle}>Unknown buck</button>
-											<button onClick={() => void classifyCurrent("doe")} style={buttonStyle}>Doe</button>
-											<button onClick={() => void classifyCurrent("other_animal")} style={buttonStyle}>Other animal</button>
-											<button onClick={() => void classifyCurrent("blank")} style={{ ...buttonStyle, color: colors.error }}>Blank / misfire</button>
+											<button onClick={() => void classifyCurrent("unknown_buck")} style={buttonStyle}>
+												Unknown buck<span style={shortcutHintStyle}>3</span>
+											</button>
+											<button onClick={() => void classifyCurrent("doe")} style={buttonStyle}>
+												Doe<span style={shortcutHintStyle}>2</span>
+											</button>
+											<button onClick={() => void classifyCurrent("other_animal")} style={buttonStyle}>
+												Other animal<span style={shortcutHintStyle}>4</span>
+											</button>
+											<button onClick={() => void classifyCurrent("blank")} style={{ ...buttonStyle, color: colors.error }}>
+												Blank / misfire<span style={shortcutHintStyle}>1</span>
+											</button>
 											<div style={{ gridColumn: "1 / -1", fontSize: typography.fontSize.xs, color: colors.textMuted }}>
 												{currentReviewFile.sourceDeletedAt
 													? "SD card original already deleted."
@@ -1487,12 +1585,19 @@ export default function TrailCameraMediaManager({
 													? "Blank / misfire also deletes the original on the SD card if the card is still connected."
 													: "No SD card original is recorded for this file."}
 											</div>
+											<div style={{ gridColumn: "1 / -1", fontSize: typography.fontSize.xs, color: colors.textMuted }}>
+												Keys: 1 misfire · 2 doe · 3 unknown buck · 4 other · 5 known buck · ← → skip · Esc exit
+											</div>
 										</div>
 									</>
 								) : (
-									<button onClick={() => void finishReview()} style={primaryButtonStyle}>Finish review and move blanks to Trash</button>
+									<button onClick={() => void finishReview()} style={primaryButtonStyle}>
+										Finish review and move blanks to Trash<span style={shortcutHintStyle}>Enter</span>
+									</button>
 								)}
-								<button onClick={() => setView(reviewReturnView)} style={{ ...buttonStyle, marginTop: "auto" }}>Exit review</button>
+								<button onClick={() => setView(reviewReturnView)} style={{ ...buttonStyle, marginTop: "auto" }}>
+									Exit review<span style={shortcutHintStyle}>Esc</span>
+								</button>
 							</aside>
 						</div>
 					) : null}

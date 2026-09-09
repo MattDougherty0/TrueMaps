@@ -1,13 +1,22 @@
 import { useEffect, useState } from "react";
 import useAppStore from "../state/store";
+import { fileNeedsReview, useMediaStore } from "../state/media";
 import MediaLibrary from "./media/MediaLibrary";
 import TrailCameraMediaManager from "./media/TrailCameraMediaManager";
+import { borderRadius, colors, spacing, typography } from "../lib/theme";
 
 export default function MyContentButton() {
 	const { projectPath } = useAppStore();
+	const files = useMediaStore((state) => state.files);
+	const loadFromProject = useMediaStore((state) => state.loadFromProject);
 	const [open, setOpen] = useState<"trail-cameras" | "content" | null>(null);
 	const [initialCameraName, setInitialCameraName] = useState<string | null>(null);
 	const [initialCameraSiteId, setInitialCameraSiteId] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (!projectPath) return;
+		void loadFromProject(projectPath);
+	}, [projectPath, loadFromProject]);
 
 	useEffect(() => {
 		const onOpenTrailCameraMedia = (event: Event) => {
@@ -22,6 +31,9 @@ export default function MyContentButton() {
 
 	if (!projectPath) return null;
 
+	const needsReviewCount = files.filter(fileNeedsReview).length;
+	const badgeLabel = needsReviewCount > 99 ? "99+" : String(needsReviewCount);
+
 	return (
 		<>
 			<button
@@ -30,23 +42,51 @@ export default function MyContentButton() {
 					setInitialCameraSiteId(null);
 					setOpen("trail-cameras");
 				}}
-				title="Trail camera photos, videos, and other media"
+				title={
+					needsReviewCount
+						? `Trail camera media · ${needsReviewCount} need review`
+						: "Trail camera photos, videos, and other media"
+				}
 				style={{
 					position: "fixed",
 					top: 12,
 					left: 500,
 					padding: "8px 14px",
 					borderRadius: 6,
-					border: "1px solid rgba(15,23,42,0.12)",
-					background: "#ffffff",
+					border: `1px solid ${colors.borderMedium}`,
+					background: colors.bgPanelSolid,
 					cursor: "pointer",
 					fontSize: 13,
 					fontWeight: 500,
 					zIndex: 1000,
-					boxShadow: "0 6px 18px rgba(15,23,42,0.12)"
+					boxShadow: "0 6px 18px rgba(15,23,42,0.12)",
+					display: "flex",
+					alignItems: "center",
+					gap: spacing.sm,
+					color: colors.textPrimary
 				}}
 			>
 				Media
+				{needsReviewCount ? (
+					<span
+						style={{
+							minWidth: 18,
+							height: 18,
+							padding: `0 ${spacing.sm}`,
+							borderRadius: borderRadius.full,
+							background: colors.primary,
+							color: colors.textOnPrimary,
+							fontSize: typography.fontSize.xs,
+							fontWeight: typography.fontWeight.bold,
+							display: "inline-flex",
+							alignItems: "center",
+							justifyContent: "center",
+							lineHeight: 1
+						}}
+					>
+						{badgeLabel}
+					</span>
+				) : null}
 			</button>
 			{open === "trail-cameras" ? (
 				<TrailCameraMediaManager
@@ -60,6 +100,3 @@ export default function MyContentButton() {
 		</>
 	);
 }
-
-
-
