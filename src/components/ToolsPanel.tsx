@@ -59,7 +59,7 @@ export default function ToolsPanel() {
 			style={{
 				position: "fixed",
 				right: 16,
-				bottom: 16,
+				bottom: 62,
 				padding: spacing.lg,
 				borderRadius: borderRadius.lg,
 				border: `1px solid ${colors.borderMedium}`,
@@ -145,7 +145,7 @@ export default function ToolsPanel() {
 			style={{
 				position: "fixed",
 				right: 16,
-				bottom: 16,
+				bottom: 62,
 				padding: `${spacing.md} ${spacing.xl}`,
 				borderRadius: borderRadius.md,
 				border: `1px solid ${colors.borderMedium}`,

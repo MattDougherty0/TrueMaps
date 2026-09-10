@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { colors } from "../lib/theme";
 
 type TracksTarget = "trails" | "animal_paths";
 
@@ -53,17 +54,18 @@ export default function ImportOnXDialog({
 				style={{
 					width: 420,
 					maxWidth: "90vw",
-					background: "#ffffff",
+					background: colors.chrome,
 					borderRadius: 10,
-					boxShadow: "0 10px 30px rgba(15,23,42,0.22)",
-					border: "1px solid rgba(15,23,42,0.12)",
-					padding: 16
+					boxShadow: colors.shadowDialog,
+					border: `1px solid ${colors.line}`,
+					padding: 16,
+					color: colors.textPrimary
 				}}
 			>
 				<div style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Import onX Options</div>
 				<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 					<label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-						<span style={{ fontSize: 12, color: "#334155" }}>Tracks target</span>
+						<span style={{ fontSize: 12, color: colors.inkLabel }}>Tracks target</span>
 						<div style={{ display: "flex", gap: 12 }}>
 							<label style={{ display: "flex", alignItems: "center", gap: 6 }}>
 								<input
@@ -86,17 +88,19 @@ export default function ImportOnXDialog({
 						</div>
 					</label>
 					<label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-						<span style={{ fontSize: 12, color: "#334155" }}>Time zone for GPX timestamps</span>
+						<span style={{ fontSize: 12, color: colors.inkLabel }}>Time zone for GPX timestamps</span>
 						<input
 							type="text"
 							value={timeZone}
 							onChange={(e) => setTimeZone(e.target.value)}
 							placeholder="e.g., America/New_York"
 							style={{
-								border: "1px solid rgba(15,23,42,0.18)",
+								border: `1px solid ${colors.line18}`,
 								borderRadius: 6,
 								padding: "8px 10px",
-								fontSize: 13
+								fontSize: 13,
+								background: colors.chrome,
+								color: colors.textPrimary
 							}}
 						/>
 					</label>
@@ -123,8 +127,9 @@ export default function ImportOnXDialog({
 						style={{
 							padding: "8px 12px",
 							borderRadius: 6,
-							border: "1px solid rgba(15,23,42,0.12)",
-							background: "#ffffff",
+							border: `1px solid ${colors.line}`,
+							background: colors.chrome,
+							color: colors.textPrimary,
 							cursor: "pointer",
 							fontSize: 13
 						}}
@@ -136,8 +141,8 @@ export default function ImportOnXDialog({
 						style={{
 							padding: "8px 12px",
 							borderRadius: 6,
-							border: "1px solid #0a84ff",
-							background: "#0a84ff",
+							border: `1px solid ${colors.accentBlue}`,
+							background: colors.accentBlue,
 							color: "#ffffff",
 							cursor: "pointer",
 							fontSize: 13,

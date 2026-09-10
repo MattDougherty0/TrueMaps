@@ -31,11 +31,13 @@ import ToolsPanel from "./ToolsPanel";
 import TerrainControls from "./TerrainControls";
 import HistoricalAutoPopulate from "./basemaps/HistoricalAutoPopulate";
 import { colors, borderRadius, spacing, typography } from "../lib/theme";
+import ThemeToggle from "./ThemeToggle";
 
 function Landing() {
 	const { createNewProject, openExistingProject, loading } = useAppStore();
 	return (
 			<div
+				className="landing"
 				style={{
 					display: "grid",
 					placeItems: "center",
@@ -141,6 +143,7 @@ export default function AppShell() {
 	const { projectPath, pendingView, setPendingView } = useAppStore();
 	return projectPath ? (
 		<>
+			<ThemeToggle />
 			<MapView />
 			<PropertyPicker />
 			<BasemapLayers />
@@ -204,7 +207,10 @@ export default function AppShell() {
 			) : null}
 		</>
 	) : (
-		<Landing />
+		<>
+			<ThemeToggle />
+			<Landing />
+		</>
 	);
 }
 

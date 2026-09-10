@@ -181,8 +181,8 @@ export default function FeatureDetailsPanel() {
 
 	const dangerButton: React.CSSProperties = {
 		...buttonBase,
-		background: "rgba(239, 68, 68, 0.10)",
-		borderColor: "rgba(239, 68, 68, 0.25)",
+		background: colors.dangerBg,
+		borderColor: colors.dangerBorder,
 		color: colors.error
 	};
 

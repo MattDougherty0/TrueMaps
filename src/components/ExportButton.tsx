@@ -1,6 +1,7 @@
 import useAppStore from "../state/store";
 import { exportGPX, exportZipOfGeoJSON } from "../lib/io/exports";
 import { useState } from "react";
+import { colors } from "../lib/theme";
 
 export default function ExportButton() {
 	const { projectPath } = useAppStore();
@@ -37,13 +38,14 @@ export default function ExportButton() {
 				left: 148,
 				padding: "8px 14px",
 				borderRadius: 6,
-				border: "1px solid rgba(15,23,42,0.12)",
-				background: "#ffffff",
+				border: `1px solid ${colors.line}`,
+				background: colors.chrome,
+				color: colors.textPrimary,
 				cursor: "pointer",
 				fontSize: 13,
 				fontWeight: 500,
 				zIndex: 1000,
-				boxShadow: "0 6px 18px rgba(15,23,42,0.12)"
+				boxShadow: colors.shadowChrome
 			}}
 		>
 			{label}

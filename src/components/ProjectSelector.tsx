@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { listLocalProjects, type LocalProject } from "../lib/storage/localProjects";
+import { colors } from "../lib/theme";
 
 interface ProjectSelectorProps {
 	onSelect: (projectId: string) => void;
@@ -38,7 +39,8 @@ export default function ProjectSelector({ onSelect, onCreateNew, onCancel }: Pro
 		>
 			<div
 				style={{
-					backgroundColor: "white",
+					backgroundColor: colors.chrome,
+					color: colors.textPrimary,
 					padding: "24px",
 					borderRadius: "8px",
 					minWidth: "400px",
@@ -48,12 +50,12 @@ export default function ProjectSelector({ onSelect, onCreateNew, onCancel }: Pro
 				}}
 				onClick={(e) => e.stopPropagation()}
 			>
-				<h2 style={{ marginTop: 0 }}>Select Project</h2>
+				<h2 style={{ marginTop: 0, color: colors.textPrimary }}>Select Project</h2>
 				
 				{!showNewForm ? (
 					<>
 						{projects.length === 0 ? (
-							<p>No projects found. Create a new one to get started.</p>
+							<p style={{ color: colors.textSecondary }}>No projects found. Create a new one to get started.</p>
 						) : (
 							<div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }}>
 								{projects.map((project) => (
@@ -63,20 +65,21 @@ export default function ProjectSelector({ onSelect, onCreateNew, onCancel }: Pro
 										style={{
 											padding: "12px",
 											textAlign: "left",
-											border: "1px solid #ccc",
+											border: `1px solid ${colors.grayBorder}`,
 											borderRadius: "4px",
 											cursor: "pointer",
-											backgroundColor: "white"
+											backgroundColor: colors.chrome,
+											color: colors.textPrimary
 										}}
 										onMouseEnter={(e) => {
-											e.currentTarget.style.backgroundColor = "#f0f0f0";
+											e.currentTarget.style.backgroundColor = colors.grayHover;
 										}}
 										onMouseLeave={(e) => {
-											e.currentTarget.style.backgroundColor = "white";
+											e.currentTarget.style.backgroundColor = colors.chrome;
 										}}
 									>
 										<div style={{ fontWeight: "bold" }}>{project.name}</div>
-										<div style={{ fontSize: "12px", color: "#666" }}>
+										<div style={{ fontSize: "12px", color: colors.grayMuted }}>
 											{new Date(project.updatedAt).toLocaleString()}
 										</div>
 									</button>
@@ -89,7 +92,7 @@ export default function ProjectSelector({ onSelect, onCreateNew, onCancel }: Pro
 								onClick={() => setShowNewForm(true)}
 								style={{
 									padding: "8px 16px",
-									backgroundColor: "#4CAF50",
+									backgroundColor: colors.green,
 									color: "white",
 									border: "none",
 									borderRadius: "4px",
@@ -102,8 +105,8 @@ export default function ProjectSelector({ onSelect, onCreateNew, onCancel }: Pro
 								onClick={onCancel}
 								style={{
 									padding: "8px 16px",
-									backgroundColor: "#ccc",
-									color: "black",
+									backgroundColor: colors.grayBorder,
+									color: colors.onGray,
 									border: "none",
 									borderRadius: "4px",
 									cursor: "pointer"
@@ -116,7 +119,7 @@ export default function ProjectSelector({ onSelect, onCreateNew, onCancel }: Pro
 				) : (
 					<>
 						<div style={{ marginBottom: "16px" }}>
-							<label style={{ display: "block", marginBottom: "8px" }}>Project Name:</label>
+							<label style={{ display: "block", marginBottom: "8px", color: colors.textPrimary }}>Project Name:</label>
 							<input
 								type="text"
 								value={newProjectName}
@@ -124,9 +127,11 @@ export default function ProjectSelector({ onSelect, onCreateNew, onCancel }: Pro
 								style={{
 									width: "100%",
 									padding: "8px",
-									border: "1px solid #ccc",
+									border: `1px solid ${colors.grayBorder}`,
 									borderRadius: "4px",
-									boxSizing: "border-box"
+									boxSizing: "border-box",
+									background: colors.chrome,
+									color: colors.textPrimary
 								}}
 								placeholder="Enter project name"
 								autoFocus
@@ -147,7 +152,7 @@ export default function ProjectSelector({ onSelect, onCreateNew, onCancel }: Pro
 								disabled={!newProjectName.trim()}
 								style={{
 									padding: "8px 16px",
-									backgroundColor: newProjectName.trim() ? "#4CAF50" : "#ccc",
+									backgroundColor: newProjectName.trim() ? colors.green : colors.grayBorder,
 									color: "white",
 									border: "none",
 									borderRadius: "4px",
@@ -163,8 +168,8 @@ export default function ProjectSelector({ onSelect, onCreateNew, onCancel }: Pro
 								}}
 								style={{
 									padding: "8px 16px",
-									backgroundColor: "#ccc",
-									color: "black",
+									backgroundColor: colors.grayBorder,
+									color: colors.onGray,
 									border: "none",
 									borderRadius: "4px",
 									cursor: "pointer"
@@ -179,4 +184,3 @@ export default function ProjectSelector({ onSelect, onCreateNew, onCancel }: Pro
 		</div>
 	);
 }
-

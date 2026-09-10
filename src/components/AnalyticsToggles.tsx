@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import { useAnalyticsStore } from "../state/analytics";
+import { colors } from "../lib/theme";
 
 export default function AnalyticsToggles() {
 	const [open, setOpen] = useState(false);
@@ -11,12 +12,12 @@ export default function AnalyticsToggles() {
 	const toggleButtonStyle: CSSProperties = {
 		padding: "6px 12px",
 		borderRadius: 6,
-		border: "1px solid rgba(15,23,42,0.12)",
-		background: "rgba(255,255,255,0.92)",
+		border: `1px solid ${colors.line}`,
+		background: colors.chrome92,
 		fontSize: 12,
 		cursor: "pointer",
-		color: "rgba(15,23,42,0.75)",
-		boxShadow: "0 4px 12px rgba(15,23,42,0.08)",
+		color: colors.ink,
+		boxShadow: colors.shadowSubtle,
 		width: "100%",
 		textAlign: "left"
 	};
@@ -37,12 +38,12 @@ export default function AnalyticsToggles() {
 				gap: 6,
 				padding: "10px 12px",
 				borderRadius: 6,
-				border: "1px solid rgba(15, 23, 42, 0.12)",
-				background: "rgba(255, 255, 255, 0.94)",
-				boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
+				border: `1px solid ${colors.line}`,
+				background: colors.chrome94,
+				boxShadow: colors.shadowChromeLg,
 				width: "100%",
 				fontSize: 12,
-				color: "rgba(15,23,42,0.75)"
+				color: colors.ink
 			}}
 		>
 			<div
@@ -57,7 +58,7 @@ export default function AnalyticsToggles() {
 						border: "none",
 						background: "transparent",
 						fontSize: 12,
-						color: "rgba(15,23,42,0.55)",
+						color: colors.inkMuted,
 						cursor: "pointer"
 					}}
 				>

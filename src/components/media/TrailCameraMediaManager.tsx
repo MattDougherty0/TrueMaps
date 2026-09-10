@@ -287,7 +287,7 @@ function FolderCard({
 				style={{
 					height: 96,
 					width: "100%",
-					background: isReview ? "rgba(255, 107, 53, 0.18)" : "#efe8dc",
+					background: isReview ? "rgba(255, 107, 53, 0.18)" : colors.thumbWarm,
 					display: "grid",
 					placeItems: "center",
 					overflow: "hidden"

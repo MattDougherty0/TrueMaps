@@ -3,6 +3,7 @@ import useAppStore from "../../state/store";
 import { useMediaStore, type MediaFile, type MediaFolder } from "../../state/media";
 import MediaViewer from "./MediaViewer";
 import type { CSSProperties } from "react";
+import { colors } from "../../lib/theme";
 
 const toMediaUrl = (absolutePath: string, projectPath: string) => {
 	// Convert absolute path to relative path from project root, excluding "media/" prefix
@@ -242,12 +243,13 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 		width: "90%",
 		maxWidth: 1200,
 		height: "85%",
-		background: "#ffffff",
+		background: colors.chrome,
 		borderRadius: 8,
-		boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+		boxShadow: colors.shadowModal,
 		display: "flex",
 		flexDirection: "column",
-		overflow: "hidden"
+		overflow: "hidden",
+		color: colors.textPrimary
 	};
 
 	return (
@@ -258,22 +260,23 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 					<div
 						style={{
 							padding: "16px 20px",
-							borderBottom: "1px solid rgba(15,23,42,0.1)",
+							borderBottom: `1px solid ${colors.line10}`,
 							display: "flex",
 							justifyContent: "space-between",
 							alignItems: "center"
 						}}
 					>
-						<h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>My Content</h2>
+						<h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: colors.textPrimary }}>My Content</h2>
 						<button
 							onClick={onClose}
 							style={{
 								padding: "6px 12px",
-								border: "1px solid rgba(15,23,42,0.2)",
+								border: `1px solid ${colors.line20}`,
 								borderRadius: 6,
-								background: "#ffffff",
+								background: colors.chrome,
 								cursor: "pointer",
-								fontSize: 13
+								fontSize: 13,
+								color: colors.textPrimary
 							}}
 						>
 							Close
@@ -284,7 +287,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 					<div
 						style={{
 							padding: "12px 20px",
-							borderBottom: "1px solid rgba(15,23,42,0.1)",
+							borderBottom: `1px solid ${colors.line10}`,
 							display: "flex",
 							gap: 8,
 							alignItems: "center"
@@ -300,14 +303,14 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 									background: "transparent",
 									cursor: "pointer",
 									fontSize: 12,
-									color: currentFolderPath ? "#0a84ff" : "#334155"
+									color: currentFolderPath ? colors.accentBlue : colors.inkLabel
 								}}
 							>
 								Root
 							</button>
 							{breadcrumbs.map((crumb, i) => (
 								<span key={crumb.path} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-									<span style={{ color: "#94a3b8" }}>/</span>
+									<span style={{ color: colors.inkFaint }}>/</span>
 									<button
 										onClick={() => setCurrentFolder(crumb.path)}
 										style={{
@@ -316,7 +319,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 											background: "transparent",
 											cursor: "pointer",
 											fontSize: 12,
-											color: i === breadcrumbs.length - 1 ? "#334155" : "#0a84ff"
+											color: i === breadcrumbs.length - 1 ? colors.inkLabel : colors.accentBlue
 										}}
 									>
 										{crumb.name}
@@ -329,11 +332,12 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 								onClick={() => setCreatingFolder(true)}
 								style={{
 									padding: "6px 12px",
-									border: "1px solid rgba(15,23,42,0.2)",
+									border: `1px solid ${colors.line20}`,
 									borderRadius: 6,
-									background: "#ffffff",
+									background: colors.chrome,
 									cursor: "pointer",
-									fontSize: 12
+									fontSize: 12,
+									color: colors.textPrimary
 								}}
 							>
 								New Folder
@@ -356,7 +360,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 									autoFocus
 									style={{
 										padding: "4px 8px",
-										border: "1px solid rgba(15,23,42,0.2)",
+										border: `1px solid ${colors.line20}`,
 										borderRadius: 4,
 										fontSize: 12,
 										width: 150
@@ -366,10 +370,10 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 									onClick={() => void handleCreateFolder()}
 									style={{
 										padding: "4px 8px",
-										border: "1px solid #0a84ff",
+										border: `1px solid ${colors.accentBlue}`,
 										borderRadius: 4,
-										background: "#0a84ff",
-										color: "#ffffff",
+										background: colors.accentBlue,
+										color: colors.textOnPrimary,
 										cursor: "pointer",
 										fontSize: 12
 									}}
@@ -383,11 +387,12 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 									}}
 									style={{
 										padding: "4px 8px",
-										border: "1px solid rgba(15,23,42,0.2)",
+										border: `1px solid ${colors.line20}`,
 										borderRadius: 4,
-										background: "#ffffff",
+										background: colors.chrome,
 										cursor: "pointer",
-										fontSize: 12
+										fontSize: 12,
+										color: colors.textPrimary
 									}}
 								>
 									Cancel
@@ -398,10 +403,10 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 							onClick={() => void handleUploadFiles()}
 							style={{
 								padding: "6px 12px",
-								border: "1px solid #0a84ff",
+								border: `1px solid ${colors.accentBlue}`,
 								borderRadius: 6,
-								background: "#0a84ff",
-								color: "#ffffff",
+								background: colors.accentBlue,
+								color: colors.textOnPrimary,
 								cursor: "pointer",
 								fontSize: 12,
 								fontWeight: 500
@@ -420,7 +425,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 									top: "50%",
 									left: "50%",
 									transform: "translate(-50%, -50%)",
-									background: "#ffffff",
+									background: colors.chrome,
 									padding: 20,
 									borderRadius: 8,
 									boxShadow: "0 12px 40px rgba(0,0,0,0.2)",
@@ -428,7 +433,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 									minWidth: 400
 								}}
 							>
-								<h3 style={{ margin: "0 0 12px 0", fontSize: 14, fontWeight: 600 }}>Edit Notes</h3>
+								<h3 style={{ margin: "0 0 12px 0", fontSize: 14, fontWeight: 600, color: colors.textPrimary }}>Edit Notes</h3>
 								<textarea
 									value={notesText}
 									onChange={(e) => setNotesText(e.target.value)}
@@ -436,7 +441,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 										width: "100%",
 										minHeight: 120,
 										padding: 8,
-										border: "1px solid rgba(15,23,42,0.2)",
+										border: `1px solid ${colors.line20}`,
 										borderRadius: 4,
 										fontSize: 13,
 										fontFamily: "inherit",
@@ -452,11 +457,12 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 										}}
 										style={{
 											padding: "6px 12px",
-											border: "1px solid rgba(15,23,42,0.2)",
+											border: `1px solid ${colors.line20}`,
 											borderRadius: 4,
-											background: "#ffffff",
+											background: colors.chrome,
 											cursor: "pointer",
-											fontSize: 12
+											fontSize: 12,
+											color: colors.textPrimary
 										}}
 									>
 										Cancel
@@ -465,10 +471,10 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 										onClick={() => void handleSaveNotes()}
 										style={{
 											padding: "6px 12px",
-											border: "1px solid #0a84ff",
+											border: `1px solid ${colors.accentBlue}`,
 											borderRadius: 4,
-											background: "#0a84ff",
-											color: "#ffffff",
+											background: colors.accentBlue,
+											color: colors.textOnPrimary,
 											cursor: "pointer",
 											fontSize: 12
 										}}
@@ -482,7 +488,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 						{/* Folders Grid */}
 						{currentFolders.length > 0 && (
 							<div style={{ marginBottom: 24 }}>
-								<h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: "#64748b" }}>Folders</h3>
+								<h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: colors.inkSubtle }}>Folders</h3>
 								<div
 									style={{
 										display: "grid",
@@ -494,21 +500,21 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 										<div
 											key={folder.id}
 											style={{
-												border: "1px solid rgba(15,23,42,0.1)",
+												border: `1px solid ${colors.line10}`,
 												borderRadius: 6,
 												padding: 12,
 												cursor: "pointer",
-												background: "#ffffff",
+												background: colors.chrome,
 												transition: "all 0.2s"
 											}}
 											onClick={() => setCurrentFolder(folder.path)}
 											onMouseEnter={(e) => {
-												e.currentTarget.style.background = "#f8fafc";
-												e.currentTarget.style.borderColor = "#0a84ff";
+												e.currentTarget.style.background = colors.mediaHover;
+												e.currentTarget.style.borderColor = colors.accentBlue;
 											}}
 											onMouseLeave={(e) => {
-												e.currentTarget.style.background = "#ffffff";
-												e.currentTarget.style.borderColor = "rgba(15,23,42,0.1)";
+												e.currentTarget.style.background = colors.chrome;
+												e.currentTarget.style.borderColor = colors.line10;
 											}}
 										>
 											<div style={{ fontSize: 32, marginBottom: 8 }}>📁</div>
@@ -524,7 +530,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 											>
 												{folder.name}
 											</div>
-											<div style={{ fontSize: 10, color: "#94a3b8" }}>
+											<div style={{ fontSize: 10, color: colors.inkFaint }}>
 												{files.filter((f) => f.path.startsWith(folder.path)).length} items
 											</div>
 											<div style={{ display: "flex", gap: 4, marginTop: 8 }}>
@@ -540,7 +546,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 														background: "transparent",
 														cursor: "pointer",
 														fontSize: 10,
-														color: "#64748b"
+														color: colors.inkSubtle
 													}}
 												>
 													📝
@@ -557,7 +563,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 														background: "transparent",
 														cursor: "pointer",
 														fontSize: 10,
-														color: "#ef4444"
+														color: colors.error
 													}}
 												>
 													🗑️
@@ -572,7 +578,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 						{/* Files Grid */}
 						{currentFiles.length > 0 && (
 							<div>
-								<h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: "#64748b" }}>Files</h3>
+								<h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, color: colors.inkSubtle }}>Files</h3>
 								<div
 									style={{
 										display: "grid",
@@ -586,20 +592,20 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 										<div
 											key={file.id}
 											style={{
-												border: "1px solid rgba(15,23,42,0.1)",
+												border: `1px solid ${colors.line10}`,
 												borderRadius: 6,
 												overflow: "hidden",
-												background: "#ffffff",
+												background: colors.chrome,
 												cursor: "pointer",
 												transition: "all 0.2s"
 											}}
 											onClick={() => handleFileClick(file)}
 											onMouseEnter={(e) => {
-												e.currentTarget.style.borderColor = "#0a84ff";
+												e.currentTarget.style.borderColor = colors.accentBlue;
 												e.currentTarget.style.boxShadow = "0 4px 12px rgba(10,132,255,0.15)";
 											}}
 											onMouseLeave={(e) => {
-												e.currentTarget.style.borderColor = "rgba(15,23,42,0.1)";
+												e.currentTarget.style.borderColor = colors.line10;
 												e.currentTarget.style.boxShadow = "none";
 											}}
 										>
@@ -623,7 +629,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 															display: "flex",
 															alignItems: "center",
 															justifyContent: "center",
-															color: "#ffffff",
+															color: colors.textOnPrimary,
 															fontSize: 32
 														}}
 													>
@@ -656,7 +662,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 																background: "transparent",
 																cursor: "pointer",
 																fontSize: 10,
-																color: "#64748b"
+																color: colors.inkSubtle
 															}}
 														>
 															📝
@@ -673,7 +679,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 																background: "transparent",
 																cursor: "pointer",
 																fontSize: 10,
-																color: "#ef4444"
+																color: colors.error
 															}}
 														>
 															🗑️
@@ -692,7 +698,7 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 								style={{
 									textAlign: "center",
 									padding: 60,
-									color: "#94a3b8",
+									color: colors.inkFaint,
 									fontSize: 14
 								}}
 							>

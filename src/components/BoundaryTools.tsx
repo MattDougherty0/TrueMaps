@@ -13,6 +13,7 @@ import MultiPolygon from "ol/geom/MultiPolygon";
 import * as turf from "@turf/turf";
 import useAppStore from "../state/store";
 import { useVisibilityStore } from "../state/visibility";
+import { colors } from "../lib/theme";
 
 const boundaryStyle = new Style({
 	stroke: new Stroke({ color: "rgba(200, 120, 0, 1)", width: 2 }),
@@ -230,16 +231,17 @@ export default function BoundaryTools({ useExternalToggle = false }: { useExtern
 	const baseButtonStyle: CSSProperties = {
 		padding: "8px 14px",
 		borderRadius: 6,
-		border: "1px solid rgba(15,23,42,0.12)",
-		background: "#f7f9fc",
+		border: `1px solid ${colors.line}`,
+		background: colors.coolFill,
 		cursor: "pointer",
 		fontSize: 13,
 		fontWeight: 500,
-		textAlign: "left"
+		textAlign: "left",
+		color: colors.textPrimary
 	};
 
 	const drawButtonStyle: CSSProperties = drawing
-		? { ...baseButtonStyle, background: "#ffe8e6", borderColor: "#fca5a5", color: "#b91c1c" }
+		? { ...baseButtonStyle, background: colors.drawActiveBg, borderColor: colors.drawActiveBorder, color: colors.dangerText }
 		: baseButtonStyle;
 
 	if (!map || !projectPath) return null;
@@ -267,11 +269,11 @@ export default function BoundaryTools({ useExternalToggle = false }: { useExtern
 						left: 12,
 						padding: "6px 12px",
 						borderRadius: 6,
-						border: "1px solid rgba(15,23,42,0.12)",
-						background: "rgba(255,255,255,0.92)",
+						border: `1px solid ${colors.line}`,
+						background: colors.chrome92,
 						fontSize: 12,
 						cursor: "pointer",
-						color: "rgba(15,23,42,0.75)",
+						color: colors.ink,
 						zIndex: 1000
 					}}
 				>
@@ -292,12 +294,13 @@ export default function BoundaryTools({ useExternalToggle = false }: { useExtern
 				gap: 8,
 				padding: "14px 16px",
 				borderRadius: 10,
-				border: "1px solid rgba(15, 23, 42, 0.12)",
-				background: "rgba(255, 255, 255, 0.98)",
-				boxShadow: "0 22px 48px rgba(15, 23, 42, 0.28)",
+				border: `1px solid ${colors.line}`,
+				background: colors.chrome98,
+				boxShadow: colors.shadowBoundary,
 				zIndex: 1400,
 				minWidth: 280,
-				maxWidth: 360
+				maxWidth: 360,
+				color: colors.textPrimary
 		  }
 		: {
 				position: "fixed",
@@ -308,17 +311,18 @@ export default function BoundaryTools({ useExternalToggle = false }: { useExtern
 				gap: 8,
 				padding: "12px 14px",
 				borderRadius: 6,
-				border: "1px solid rgba(15, 23, 42, 0.12)",
-				background: "rgba(255, 255, 255, 0.94)",
-				boxShadow: "0 10px 28px rgba(15, 23, 42, 0.12)",
+				border: `1px solid ${colors.line}`,
+				background: colors.chrome94,
+				boxShadow: colors.shadowChromeLg,
 				zIndex: 1000,
-				maxWidth: 240
+				maxWidth: 240,
+				color: colors.textPrimary
 		  };
 
 	return (
 		<div style={containerStyle}>
 			<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-				<strong style={{ fontSize: 13, color: "rgba(15,23,42,0.75)" }}>Property Boundary</strong>
+				<strong style={{ fontSize: 13, color: colors.ink }}>Property Boundary</strong>
 				{hasBoundary || useExternalToggle ? (
 					<button
 						onClick={() => setExpanded(false)}
@@ -326,7 +330,7 @@ export default function BoundaryTools({ useExternalToggle = false }: { useExtern
 							border: "none",
 							background: "transparent",
 							fontSize: 11,
-							color: "rgba(15,23,42,0.55)",
+							color: colors.inkMuted,
 							cursor: "pointer"
 						}}
 					>
@@ -335,11 +339,11 @@ export default function BoundaryTools({ useExternalToggle = false }: { useExtern
 				) : null}
 			</div>
 			{hasBoundary ? (
-				<p style={{ margin: 0, fontSize: 12, color: "rgba(15,23,42,0.55)" }}>
+				<p style={{ margin: 0, fontSize: 12, color: colors.inkMuted }}>
 					Update or replace your existing parcel outline.
 				</p>
 			) : (
-				<p style={{ margin: 0, fontSize: 12, color: "rgba(15,23,42,0.55)" }}>
+				<p style={{ margin: 0, fontSize: 12, color: colors.inkMuted }}>
 					Import a boundary file or sketch your property outline.
 				</p>
 			)}
@@ -354,9 +358,9 @@ export default function BoundaryTools({ useExternalToggle = false }: { useExtern
 				onClick={onImportClick}
 				style={{
 					...baseButtonStyle,
-					background: "#0a84ff",
-					color: "#fff",
-					borderColor: "#0a84ff"
+					background: colors.accentBlue,
+					color: colors.textOnPrimary,
+					borderColor: colors.accentBlue
 				}}
 			>
 				{hasBoundary ? "Replace Boundary" : "Import Boundary"}

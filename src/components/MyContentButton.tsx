@@ -59,7 +59,7 @@ export default function MyContentButton() {
 					fontSize: 13,
 					fontWeight: 500,
 					zIndex: 1000,
-					boxShadow: "0 6px 18px rgba(15,23,42,0.12)",
+					boxShadow: colors.shadowChrome,
 					display: "flex",
 					alignItems: "center",
 					gap: spacing.sm,

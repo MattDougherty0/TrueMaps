@@ -1,54 +1,95 @@
 /**
  * onX-Inspired Design System
- * Warm, premium color palette and design tokens
+ * Warm, premium color palette and design tokens.
+ * Values are CSS variables so dark mode can swap palettes without changing light.
  */
 
-// Color Palette - Warm Earth Tones
 export const colors = {
 	// Primary Orange (onX-style minimal accent)
-	primary: "#FF6B35",
-	primaryHover: "#E85A2E",
-	primaryActive: "#D44F28",
-	primaryLight: "rgba(255, 107, 53, 0.12)",
-	primaryBorder: "rgba(255, 107, 53, 0.25)",
+	primary: "var(--tm-primary)",
+	primaryHover: "var(--tm-primary-hover)",
+	primaryActive: "var(--tm-primary-active)",
+	primaryLight: "var(--tm-primary-light)",
+	primaryBorder: "var(--tm-primary-border)",
 
 	// Backgrounds - Warm Off-White
-	bgPrimary: "#FAF9F6",
-	bgSecondary: "#F8F7F4",
-	bgPanel: "rgba(250, 249, 246, 0.98)",
-	bgPanelSolid: "#FEFDFB",
-	bgButton: "rgba(248, 247, 244, 0.92)",
-	bgButtonHover: "rgba(245, 243, 239, 0.95)",
+	bgPrimary: "var(--tm-bg-primary)",
+	bgSecondary: "var(--tm-bg-secondary)",
+	bgPanel: "var(--tm-bg-panel)",
+	bgPanelSolid: "var(--tm-bg-panel-solid)",
+	bgButton: "var(--tm-bg-button)",
+	bgButtonHover: "var(--tm-bg-button-hover)",
+
+	// Chrome used by older hardcoded white/slate controls (light values stay identical)
+	chrome: "var(--tm-chrome)",
+	chrome92: "var(--tm-chrome-92)",
+	chrome94: "var(--tm-chrome-94)",
+	chrome95: "var(--tm-chrome-95)",
+	chrome98: "var(--tm-chrome-98)",
+	coolFill: "var(--tm-cool-fill)",
+	thumbWarm: "var(--tm-thumb-warm)",
+	galleryThumb: "var(--tm-gallery-thumb)",
+	galleryBtn: "var(--tm-gallery-btn)",
+	galleryBorder: "var(--tm-gallery-border)",
+	galleryBtnBorder: "var(--tm-gallery-btn-border)",
+	galleryEmpty: "var(--tm-gallery-empty)",
+	mediaHover: "var(--tm-media-hover)",
+	grayBorder: "var(--tm-gray-border)",
+	grayMuted: "var(--tm-gray-muted)",
+	grayHover: "var(--tm-gray-hover)",
+	onGray: "var(--tm-on-gray)",
+	green: "var(--tm-green)",
 
 	// Text - Warm Dark Grays
-	textPrimary: "#2D2A24",
-	textSecondary: "#6B6658",
-	textTertiary: "#7A7568",
-	textMuted: "rgba(45, 42, 36, 0.6)",
-	textLight: "rgba(45, 42, 36, 0.55)",
-	textOnPrimary: "#FFFFFF",
+	textPrimary: "var(--tm-text-primary)",
+	textSecondary: "var(--tm-text-secondary)",
+	textTertiary: "var(--tm-text-tertiary)",
+	textMuted: "var(--tm-text-muted)",
+	textLight: "var(--tm-text-light)",
+	textOnPrimary: "var(--tm-text-on-primary)",
+	ink: "var(--tm-ink)",
+	inkMuted: "var(--tm-ink-muted)",
+	inkLabel: "var(--tm-ink-label)",
+	inkSubtle: "var(--tm-ink-subtle)",
+	inkFaint: "var(--tm-ink-faint)",
 
 	// Borders - Warm Subtle
-	border: "rgba(45, 42, 36, 0.08)",
-	borderMedium: "rgba(45, 42, 36, 0.12)",
-	borderStrong: "rgba(45, 42, 36, 0.15)",
-	borderPrimary: "rgba(255, 107, 53, 0.3)",
+	border: "var(--tm-border)",
+	borderMedium: "var(--tm-border-medium)",
+	borderStrong: "var(--tm-border-strong)",
+	borderPrimary: "var(--tm-border-primary)",
+	line: "var(--tm-line)",
+	line10: "var(--tm-line-10)",
+	line20: "var(--tm-line-20)",
+	line18: "var(--tm-line-18)",
 
 	// Shadows - Warm Brown Tones
-	shadowSubtle: "0 4px 12px rgba(45, 42, 36, 0.06)",
-	shadowMedium: "0 8px 18px rgba(45, 42, 36, 0.08)",
-	shadowLarge: "0 12px 28px rgba(45, 42, 36, 0.12)",
-	shadowXLarge: "0 16px 40px rgba(45, 42, 36, 0.15)",
-	shadowGlow: "0 4px 12px rgba(255, 107, 53, 0.2)",
+	shadowSubtle: "var(--tm-shadow-subtle)",
+	shadowMedium: "var(--tm-shadow-medium)",
+	shadowLarge: "var(--tm-shadow-large)",
+	shadowXLarge: "var(--tm-shadow-xlarge)",
+	shadowGlow: "var(--tm-shadow-glow)",
+	shadowChrome: "var(--tm-shadow-chrome)",
+	shadowChromeLg: "var(--tm-shadow-chrome-lg)",
+	shadowModal: "var(--tm-shadow-modal)",
+	shadowBlue: "var(--tm-shadow-blue)",
+	shadowDialog: "var(--tm-shadow-dialog)",
+	shadowBoundary: "var(--tm-shadow-boundary)",
 
 	// State Colors
-	success: "#22C55E",
-	error: "#EF4444",
-	warning: "#F59E0B",
-	info: "#3B82F6",
+	success: "var(--tm-success)",
+	error: "var(--tm-error)",
+	warning: "var(--tm-warning)",
+	info: "var(--tm-info)",
+	accentBlue: "var(--tm-accent-blue)",
+	dangerBg: "var(--tm-danger-bg)",
+	dangerBorder: "var(--tm-danger-border)",
+	dangerText: "var(--tm-danger-text)",
+	drawActiveBg: "var(--tm-draw-active-bg)",
+	drawActiveBorder: "var(--tm-draw-active-border)",
 
 	// Overlay
-	overlay: "rgba(45, 42, 36, 0.4)"
+	overlay: "var(--tm-overlay)"
 } as const;
 
 // Typography
@@ -158,6 +199,3 @@ export const components = {
 export const mergeStyles = (...styles: Array<React.CSSProperties | undefined>): React.CSSProperties => {
 	return Object.assign({}, ...styles.filter(Boolean));
 };
-
-
-
