@@ -95,6 +95,114 @@ const isTypingTarget = (target: EventTarget | null): boolean => {
 	return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
 };
 
+const kbdStyle: CSSProperties = {
+	display: "inline-flex",
+	alignItems: "center",
+	justifyContent: "center",
+	minWidth: 22,
+	height: 20,
+	padding: "0 6px",
+	borderRadius: 4,
+	border: "1px solid rgba(255,255,255,0.28)",
+	background: "rgba(0,0,0,0.45)",
+	color: "#fff",
+	fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+	fontSize: 11,
+	fontWeight: 700,
+	lineHeight: 1,
+	letterSpacing: 0
+};
+
+const sidebarKbdStyle: CSSProperties = {
+	...kbdStyle,
+	border: `1px solid ${colors.borderMedium}`,
+	background: colors.bgButton,
+	color: colors.textPrimary
+};
+
+function HotkeyKeys({ keys, onPhoto }: { keys: string[]; onPhoto?: boolean }) {
+	return (
+		<span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+			{keys.map((key) => (
+				<kbd key={key} style={onPhoto ? kbdStyle : sidebarKbdStyle}>
+					{key}
+				</kbd>
+			))}
+		</span>
+	);
+}
+
+function ReviewHotkeyLegend({ finished, onPhoto }: { finished: boolean; onPhoto?: boolean }) {
+	const rows = finished
+		? [
+				{ keys: ["Enter"], label: "Finish & move blanks to Trash" },
+				{ keys: ["Esc"], label: "Exit review" }
+			]
+		: [
+				{ keys: ["1", "X"], label: "Blank / misfire" },
+				{ keys: ["2", "D"], label: "Doe" },
+				{ keys: ["3", "U"], label: "Unknown buck" },
+				{ keys: ["4", "O"], label: "Other animal" },
+				{ keys: ["5", "K"], label: "Known buck" },
+				{ keys: ["←", "→"], label: "Skip / go back" },
+				{ keys: ["Esc"], label: "Exit review" }
+			];
+
+	if (onPhoto) {
+		return (
+			<div
+				style={{
+					position: "absolute",
+					left: 0,
+					right: 0,
+					top: 0,
+					padding: `${spacing.md} ${spacing.lg} ${spacing.xxl}`,
+					background: "linear-gradient(rgba(0,0,0,0.82), transparent)",
+					color: "#fff",
+					pointerEvents: "none"
+				}}
+			>
+				<div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.7, marginBottom: 8 }}>
+					Hotkeys
+				</div>
+				<div style={{ display: "flex", flexWrap: "wrap", gap: "8px 14px", alignItems: "center" }}>
+					{rows.map((row) => (
+						<span key={row.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+							<HotkeyKeys keys={row.keys} onPhoto />
+							<span style={{ opacity: 0.92 }}>{row.label}</span>
+						</span>
+					))}
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div
+			style={{
+				padding: spacing.md,
+				border: `1px solid ${colors.borderMedium}`,
+				borderRadius: borderRadius.lg,
+				background: colors.bgSecondary,
+				display: "grid",
+				gap: spacing.sm
+			}}
+		>
+			<div style={{ fontSize: typography.fontSize.xs, fontWeight: typography.fontWeight.semibold, color: colors.textSecondary, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+				Hotkeys
+			</div>
+			<div style={{ display: "flex", flexWrap: "wrap", gap: `${spacing.sm} ${spacing.lg}` }}>
+				{rows.map((row) => (
+					<span key={row.label} style={{ display: "inline-flex", alignItems: "center", gap: spacing.sm, fontSize: typography.fontSize.sm, color: colors.textPrimary }}>
+						<HotkeyKeys keys={row.keys} />
+						{row.label}
+					</span>
+				))}
+			</div>
+		</div>
+	);
+}
+
 const sortByDate = (files: MediaFile[]): MediaFile[] =>
 	[...files].sort((a, b) => (b.capturedAt || b.createdAt).localeCompare(a.capturedAt || a.createdAt));
 
@@ -1476,10 +1584,11 @@ export default function TrailCameraMediaManager({
 
 					{view === "review" ? (
 						<div style={{ height: "100%", display: "grid", gridTemplateColumns: "minmax(0, 1.6fr) minmax(300px, 0.7fr)", gap: spacing.xxl }}>
-							<section style={{ minHeight: 420, background: "#111", borderRadius: borderRadius.lg, overflow: "hidden" }}>
+							<section style={{ position: "relative", minHeight: 420, background: "#111", borderRadius: borderRadius.lg, overflow: "hidden" }}>
 								{currentReviewFile ? <MediaPreview file={currentReviewFile} large /> : (
 									<div style={{ height: "100%", display: "grid", placeItems: "center", color: "#fff" }}>Review complete</div>
 								)}
+								<ReviewHotkeyLegend finished={!currentReviewFile} onPhoto />
 							</section>
 							<aside style={{ display: "flex", flexDirection: "column", gap: spacing.lg }}>
 								<div>
@@ -1585,15 +1694,16 @@ export default function TrailCameraMediaManager({
 													? "Blank / misfire also deletes the original on the SD card if the card is still connected."
 													: "No SD card original is recorded for this file."}
 											</div>
-											<div style={{ gridColumn: "1 / -1", fontSize: typography.fontSize.xs, color: colors.textMuted }}>
-												Keys: 1 misfire · 2 doe · 3 unknown buck · 4 other · 5 known buck · ← → skip · Esc exit
-											</div>
 										</div>
+										<ReviewHotkeyLegend finished={false} />
 									</>
 								) : (
-									<button onClick={() => void finishReview()} style={primaryButtonStyle}>
-										Finish review and move blanks to Trash<span style={shortcutHintStyle}>Enter</span>
-									</button>
+									<>
+										<button onClick={() => void finishReview()} style={primaryButtonStyle}>
+											Finish review and move blanks to Trash<span style={shortcutHintStyle}>Enter</span>
+										</button>
+										<ReviewHotkeyLegend finished />
+									</>
 								)}
 								<button onClick={() => setView(reviewReturnView)} style={{ ...buttonStyle, marginTop: "auto" }}>
 									Exit review<span style={shortcutHintStyle}>Esc</span>
