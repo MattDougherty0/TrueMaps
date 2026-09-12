@@ -1,8 +1,13 @@
-import type { MediaClassification, MediaFile } from "../../state/media";
+import {
+	formatReviewNeeds,
+	type MediaClassification,
+	type MediaFile
+} from "../../state/media";
 
 export const classificationLabels: Record<MediaClassification, string> = {
 	known_buck: "Known buck",
 	unknown_buck: "Unknown buck",
+	scrub_buck: "Scrub buck",
 	doe: "Doe",
 	other_animal: "Other animal",
 	blank: "Blank / misfire"
@@ -23,7 +28,7 @@ export type DuplicateWarning = {
 };
 
 const folderPathOf = (file: MediaFile): string => {
-	if (!file.path.includes("/")) return "My Content";
+	if (!file.path.includes("/")) return "Unassigned";
 	return file.path.slice(0, file.path.lastIndexOf("/"));
 };
 
@@ -43,6 +48,8 @@ export const locationLabel = (
 
 export const reviewStatusLabel = (file: MediaFile): string => {
 	if (file.trashedAt) return "In trash (blank / misfire)";
+	const needed = formatReviewNeeds(file);
+	if (needed) return `Needs ${needed}`;
 	if (file.classification) return `Reviewed as ${classificationLabels[file.classification]}`;
 	return "Still needs review";
 };

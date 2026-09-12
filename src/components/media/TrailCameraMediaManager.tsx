@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import useAppStore from "../../state/store";
 import {
+	fileNeedsCamera,
+	fileNeedsIdentity,
 	fileNeedsReview,
+	formatReviewNeeds,
 	useMediaStore,
 	type KnownDeer,
 	type MediaClassification,
 	type MediaFile,
+	type ReviewNeed,
 	type StoredCameraSite
 } from "../../state/media";
 import {
@@ -18,6 +22,7 @@ import { borderRadius, colors, spacing, typography } from "../../lib/theme";
 import {
 	classificationLabels,
 	describeMediaDuplicate,
+	findCatalogMatch,
 	findDuplicatePeers,
 	warningsFromMatches,
 	ensureMediaHashes,
@@ -30,11 +35,11 @@ type CameraBrowse =
 	| { level: "home" }
 	| { level: "needs-review" }
 	| { level: "site"; siteId: string }
-	| { level: "needs-review-site"; siteId: string };
+	| { level: "needs-review-site"; siteId: string }
+	| { level: "needs-review-reason"; reason: ReviewNeed };
 
 type TrailCameraMediaManagerProps = {
 	onClose: () => void;
-	onOpenContent: () => void;
 	initialCameraName?: string | null;
 	initialCameraSiteId?: string | null;
 };
@@ -137,7 +142,7 @@ function ReviewHotkeyLegend({ finished, onPhoto }: { finished: boolean; onPhoto?
 	const rows = finished
 		? [
 				{ keys: ["Enter"], label: "Finish & move blanks to Trash" },
-				{ keys: ["Esc"], label: "Exit review" }
+				{ keys: ["Esc"], label: "Back" }
 			]
 		: [
 				{ keys: ["1", "X"], label: "Blank / misfire" },
@@ -145,8 +150,9 @@ function ReviewHotkeyLegend({ finished, onPhoto }: { finished: boolean; onPhoto?
 				{ keys: ["3", "U"], label: "Unknown buck" },
 				{ keys: ["4", "O"], label: "Other animal" },
 				{ keys: ["5", "K"], label: "Known buck" },
+				{ keys: ["6", "S"], label: "Scrub buck" },
 				{ keys: ["←", "→"], label: "Skip / go back" },
-				{ keys: ["Esc"], label: "Exit review" }
+				{ keys: ["Esc"], label: "Back" }
 			];
 
 	if (onPhoto) {
@@ -316,47 +322,93 @@ function MediaCard({
 	file,
 	cameraName,
 	deerNames,
+	selected,
+	onToggleSelect,
 	onClick
 }: {
 	file: MediaFile;
 	cameraName?: string;
 	deerNames: string[];
+	selected?: boolean;
+	onToggleSelect?: (id: string) => void;
 	onClick: () => void;
 }) {
+	const needed = formatReviewNeeds(file);
 	return (
-		<button
-			type="button"
-			onClick={onClick}
+		<div
 			style={{
-				textAlign: "left",
-				padding: 0,
+				position: "relative",
 				borderRadius: borderRadius.lg,
-				border: `1px solid ${colors.borderMedium}`,
-				background: colors.bgPanelSolid,
+				border: `1px solid ${selected ? colors.primaryBorder : colors.borderMedium}`,
+				background: selected ? colors.primaryLight : colors.bgPanelSolid,
 				overflow: "hidden",
-				cursor: "pointer",
 				color: colors.textPrimary
 			}}
 		>
-			<div style={{ height: 130 }}>
-				<MediaPreview file={file} />
-			</div>
-			<div style={{ padding: spacing.md, display: "grid", gap: 3 }}>
-				<div style={{ fontSize: typography.fontSize.sm, fontWeight: typography.fontWeight.semibold, overflow: "hidden", textOverflow: "ellipsis" }}>
-					{file.name}
+			{onToggleSelect ? (
+				<label
+					style={{
+						position: "absolute",
+						top: 8,
+						left: 8,
+						zIndex: 2,
+						display: "flex",
+						alignItems: "center",
+						justifyContent: "center",
+						width: 24,
+						height: 24,
+						borderRadius: 6,
+						background: "rgba(0,0,0,0.55)",
+						cursor: "pointer"
+					}}
+				>
+					<input
+						type="checkbox"
+						checked={Boolean(selected)}
+						onChange={() => onToggleSelect(file.id)}
+						aria-label={`Select ${file.name}`}
+					/>
+				</label>
+			) : null}
+			<button
+				type="button"
+				onClick={onClick}
+				style={{
+					display: "block",
+					width: "100%",
+					textAlign: "left",
+					padding: 0,
+					border: "none",
+					background: "transparent",
+					cursor: "pointer",
+					color: "inherit"
+				}}
+			>
+				<div style={{ height: 130 }}>
+					<MediaPreview file={file} />
 				</div>
-				<div style={{ fontSize: typography.fontSize.xs, color: colors.textPrimary, fontWeight: typography.fontWeight.medium }}>
-					{formatCaptureDateTime(file.capturedAt || file.createdAt)}
+				<div style={{ padding: spacing.md, display: "grid", gap: 3 }}>
+					<div style={{ fontSize: typography.fontSize.sm, fontWeight: typography.fontWeight.semibold, overflow: "hidden", textOverflow: "ellipsis" }}>
+						{file.name}
+					</div>
+					<div style={{ fontSize: typography.fontSize.xs, color: colors.textPrimary, fontWeight: typography.fontWeight.medium }}>
+						{formatCaptureDateTime(file.capturedAt || file.createdAt)}
+					</div>
+					<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>
+						{cameraName || "Unassigned camera"}
+					</div>
+					<div style={{ fontSize: typography.fontSize.xs, color: file.classification === "blank" ? colors.error : colors.textSecondary }}>
+						{file.classification ? classificationLabels[file.classification] : "Unclassified"}
+						{deerNames.length ? ` · ${deerNames.join(", ")}` : ""}
+					</div>
+					{needed ? (
+						<div style={{ fontSize: typography.fontSize.xs, color: colors.primary, fontWeight: typography.fontWeight.semibold }}>
+							Needs {needed}
+						</div>
+					) : null}
 				</div>
-				<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>
-					{cameraName || "Unassigned camera"}
-				</div>
-				<div style={{ fontSize: typography.fontSize.xs, color: file.classification === "blank" ? colors.error : colors.textSecondary }}>
-					{file.classification ? classificationLabels[file.classification] : "Needs review"}
-					{deerNames.length ? ` · ${deerNames.join(", ")}` : ""}
-				</div>
-			</div>
-		</button>
+			</button>
+		</div>
 	);
 }
 
@@ -421,13 +473,11 @@ function FolderCard({
 
 export default function TrailCameraMediaManager({
 	onClose,
-	onOpenContent,
 	initialCameraName,
 	initialCameraSiteId
 }: TrailCameraMediaManagerProps) {
 	const { projectPath, activePropertyId, properties } = useAppStore();
 	const {
-		folders,
 		files,
 		knownDeer,
 		importSessions,
@@ -445,7 +495,6 @@ export default function TrailCameraMediaManager({
 	const [deerBrowse, setDeerBrowse] = useState<"home" | "deer">("home");
 	const [selectedDeerId, setSelectedDeerId] = useState("");
 	const [newDeerName, setNewDeerName] = useState("");
-	const [existingFolderId, setExistingFolderId] = useState("");
 	const [view, setView] = useState<ManagerView>("cameras");
 	const [reviewReturnView, setReviewReturnView] = useState<Exclude<ManagerView, "review">>("cameras");
 	const [loading, setLoading] = useState(true);
@@ -459,6 +508,8 @@ export default function TrailCameraMediaManager({
 	const [message, setMessage] = useState("");
 	const [reviewIds, setReviewIds] = useState<string[]>([]);
 	const [reviewIndex, setReviewIndex] = useState(0);
+	const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
+	const [bulkSiteId, setBulkSiteId] = useState("");
 	const [areaName, setAreaName] = useState("");
 	const [creatingSite, setCreatingSite] = useState(false);
 	const [newSiteName, setNewSiteName] = useState("");
@@ -524,6 +575,7 @@ export default function TrailCameraMediaManager({
 			? cameraBrowse.siteId
 			: "";
 	const selectedSite = sites.find((site) => site.id === browsingSiteId) || null;
+	const browsingUnassigned = browsingSiteId === UNASSIGNED_SITE_ID;
 	const siteNames = useMemo(() => new Map(sites.map((site) => [site.id, site.name])), [sites]);
 	const deerNames = useMemo(() => new Map(knownDeer.map((deer) => [deer.id, deer.name])), [knownDeer]);
 	const propertyNames = useMemo(
@@ -550,13 +602,27 @@ export default function TrailCameraMediaManager({
 		() => (browsingSiteId ? filesForSite(activeFiles, browsingSiteId) : []),
 		[activeFiles, browsingSiteId]
 	);
-	const visibleSiteFiles = useMemo(
-		() =>
-			cameraBrowse.level === "needs-review-site"
-				? selectedSiteFiles.filter(fileNeedsReview)
-				: selectedSiteFiles,
-		[cameraBrowse.level, selectedSiteFiles]
+	const filesNeedingCamera = useMemo(() => sortByDate(activeFiles.filter(fileNeedsCamera)), [activeFiles]);
+	const filesNeedingIdentity = useMemo(
+		() => sortByDate(activeFiles.filter(fileNeedsIdentity)),
+		[activeFiles]
 	);
+	const visibleSiteFiles = useMemo(() => {
+		if (cameraBrowse.level === "needs-review-reason") {
+			return cameraBrowse.reason === "camera" ? filesNeedingCamera : filesNeedingIdentity;
+		}
+		if (cameraBrowse.level === "needs-review-site") {
+			return selectedSiteFiles.filter(fileNeedsReview);
+		}
+		if (cameraBrowse.level === "site") {
+			return selectedSiteFiles;
+		}
+		return [];
+	}, [cameraBrowse, filesNeedingCamera, filesNeedingIdentity, selectedSiteFiles]);
+	const showingFileBrowser =
+		cameraBrowse.level === "site" ||
+		cameraBrowse.level === "needs-review-site" ||
+		cameraBrowse.level === "needs-review-reason";
 	const selectedDeerFiles = useMemo(
 		() => sortByDate(activeFiles.filter((file) => file.knownDeerIds?.includes(selectedDeerId))),
 		[activeFiles, selectedDeerId]
@@ -583,6 +649,10 @@ export default function TrailCameraMediaManager({
 	useEffect(() => {
 		selectedDeerIdRef.current = selectedDeerId;
 	}, [selectedDeerId]);
+	useEffect(() => {
+		setSelectedFileIds([]);
+		setBulkSiteId("");
+	}, [cameraBrowse, view]);
 	const unassignedFiles = useMemo(() => filesForSite(activeFiles, UNASSIGNED_SITE_ID), [activeFiles]);
 	const pendingBySiteId = useMemo(() => {
 		const counts = new Map<string, MediaFile[]>();
@@ -633,62 +703,6 @@ export default function TrailCameraMediaManager({
 		return deer.id;
 	};
 
-	const filesInFolder = (folderPath: string): MediaFile[] =>
-		files.filter((file) => file.path === folderPath || file.path.startsWith(`${folderPath}/`));
-
-	const linkExistingFolderToSite = async () => {
-		if (!projectPath || !selectedSite || !existingFolderId) return;
-		const folder = folders.find((item) => item.id === existingFolderId);
-		if (!folder) return;
-		const matchingFiles = filesInFolder(folder.path);
-		updateFiles(
-			matchingFiles.map((file) => ({
-				id: file.id,
-				changes: {
-					cameraSiteId: selectedSite.id,
-					propertyId: selectedSite.propertyId || undefined,
-					areaName: areaName || selectedSite.areaName || undefined
-				}
-			}))
-		);
-		await saveToProject(projectPath);
-		setMessage(`Linked ${matchingFiles.length} existing file(s) from ${folder.name} to ${selectedSite.name}.`);
-		setExistingFolderId("");
-	};
-
-	const createDeerFromFolder = async () => {
-		if (!projectPath || !existingFolderId) return;
-		const folder = folders.find((item) => item.id === existingFolderId);
-		if (!folder) return;
-		const now = new Date().toISOString();
-		const existing = knownDeer.find((deer) => deer.name.toLowerCase() === folder.name.toLowerCase());
-		const deerId = existing?.id || createId("deer");
-		if (!existing) {
-			addKnownDeer({
-				id: deerId,
-				name: folder.name,
-				createdAt: now,
-				updatedAt: now
-			});
-		}
-		const matchingFiles = filesInFolder(folder.path);
-		updateFiles(
-			matchingFiles.map((file) => ({
-				id: file.id,
-				changes: {
-					classification: "known_buck",
-					reviewStatus: "reviewed",
-					knownDeerIds: Array.from(new Set([...(file.knownDeerIds || []), deerId]))
-				}
-			}))
-		);
-		setSelectedDeerId(deerId);
-		setDeerBrowse("deer");
-		setExistingFolderId("");
-		await saveToProject(projectPath);
-		setMessage(`Created ${folder.name} and linked ${matchingFiles.length} existing file(s) without moving them.`);
-	};
-
 	const startReview = (siteFiles: MediaFile[], startId?: string) => {
 		const ids = siteFiles.map((file) => file.id);
 		const nextIndex = Math.max(0, startId ? ids.indexOf(startId) : 0);
@@ -699,6 +713,26 @@ export default function TrailCameraMediaManager({
 		setReviewIndex(nextIndex);
 		setSdDeleteStats({ deleted: 0, missing: 0, failed: 0 });
 		setView("review");
+	};
+
+	const leaveReview = () => {
+		setView(reviewReturnView);
+	};
+
+	const cameraAssignment = (cameraSiteId: string): Partial<MediaFile> => {
+		if (!cameraSiteId) {
+			return { cameraSiteId: undefined, propertyId: undefined, areaName: undefined };
+		}
+		const site = sites.find((item) => item.id === cameraSiteId);
+		if (!site) return {};
+		const nextArea =
+			site.areaName ||
+			(site.propertyId === "camp" ? "Camp" : propertyNames.get(site.propertyId || "") || undefined);
+		return {
+			cameraSiteId: site.id,
+			propertyId: site.propertyId || undefined,
+			areaName: nextArea
+		};
 	};
 
 	const saveCameraArea = async (nextAreaName: string) => {
@@ -733,28 +767,18 @@ export default function TrailCameraMediaManager({
 
 	const assignCurrentCamera = async (cameraSiteId: string) => {
 		if (!projectPath || !currentReviewFile) return;
-		if (!cameraSiteId) {
-			updateFile(currentReviewFile.id, {
-				cameraSiteId: undefined,
-				propertyId: undefined,
-				areaName: undefined
-			});
-			await saveToProject(projectPath);
-			return;
-		}
-		const site = sites.find((item) => item.id === cameraSiteId);
-		if (!site) return;
-		const nextArea =
-			site.areaName ||
-			(site.propertyId === "camp"
-				? "Camp"
-				: propertyNames.get(site.propertyId || "") || currentReviewFile.areaName);
-		updateFile(currentReviewFile.id, {
-			cameraSiteId: site.id,
-			propertyId: site.propertyId || undefined,
-			areaName: nextArea || undefined
-		});
+		updateFile(currentReviewFile.id, cameraAssignment(cameraSiteId));
 		await saveToProject(projectPath);
+	};
+
+	const assignSelectedCamera = async () => {
+		if (!projectPath || !bulkSiteId || !selectedFileIds.length) return;
+		const changes = cameraAssignment(bulkSiteId);
+		if (!changes.cameraSiteId) return;
+		updateFiles(selectedFileIds.map((id) => ({ id, changes })));
+		await saveToProject(projectPath);
+		setMessage(`Assigned ${selectedFileIds.length} file(s) to ${siteLabel(bulkSiteId)}.`);
+		setSelectedFileIds([]);
 	};
 
 	const toggleCurrentDeer = async (deerId: string) => {
@@ -896,6 +920,100 @@ export default function TrailCameraMediaManager({
 		}
 	};
 
+	const handleUploadFiles = async () => {
+		if (!projectPath || cameraBrowse.level !== "site") return;
+		const selectedFiles = await window.api.chooseFiles([
+			{ name: "All Media Files", extensions: ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "mp4", "mov", "avi", "mkv", "webm", "m4v"] },
+			{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"] },
+			{ name: "Videos", extensions: ["mp4", "mov", "avi", "mkv", "webm", "m4v"] },
+			{ name: "All Files", extensions: ["*"] }
+		]);
+		if (!selectedFiles?.length) return;
+
+		const datePart = new Date().toISOString().slice(0, 10);
+		const importArea =
+			areaName ||
+			selectedSite?.areaName ||
+			propertyNames.get(selectedSite?.propertyId || "") ||
+			"Property";
+		const targetFolder = selectedSite
+			? `${safePathPart(importArea)}/cameras/${safePathPart(selectedSite.name)}/${datePart}_upload`
+			: `unassigned/${datePart}`;
+
+		setDuplicateReport([]);
+		setMessage("Checking for duplicates…");
+		try {
+			await ensureMediaHashes(projectPath, files, updateFiles);
+			const catalog = useMediaStore.getState().files;
+			const hashed =
+				typeof window.api.hashExternalFiles === "function"
+					? await window.api.hashExternalFiles(selectedFiles)
+					: [];
+			const hashByPath = new Map(hashed.map((item) => [item.path, item.sha256]));
+			const seen = new Set(catalog.map((file) => file.sha256).filter((hash): hash is string => Boolean(hash)));
+			const importedFiles: MediaFile[] = [];
+			const dupes: DuplicateWarning[] = [];
+			const failed: string[] = [];
+			const now = new Date().toISOString();
+
+			for (const absPath of selectedFiles) {
+				const originalFileName = absPath.split(/[/\\]/).pop() || "";
+				const isVideo = /\.(mp4|mov|avi|mkv|webm|m4v)$/i.test(originalFileName);
+				const isImage = /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i.test(originalFileName);
+				if (!isVideo && !isImage) continue;
+				try {
+					const hash = hashByPath.get(absPath);
+					if (hash) {
+						const existing = findCatalogMatch(catalog, hash);
+						if (existing || seen.has(hash)) {
+							if (existing) {
+								dupes.push(describeMediaDuplicate(existing, originalFileName, sites, propertyNames));
+							}
+							continue;
+						}
+					}
+					const copiedRelPath = await window.api.copyToMedia(projectPath, absPath, targetFolder);
+					const pathWithoutMedia = copiedRelPath.startsWith("media/")
+						? copiedRelPath.slice(6)
+						: copiedRelPath;
+					const mediaFile: MediaFile = {
+						id: createId("file"),
+						name: pathWithoutMedia.split("/").pop() || originalFileName,
+						path: pathWithoutMedia,
+						type: isVideo ? "video" : "image",
+						sha256: hash,
+						propertyId: selectedSite?.propertyId || undefined,
+						areaName: selectedSite ? importArea : undefined,
+						cameraSiteId: selectedSite?.id,
+						reviewStatus: "pending",
+						knownDeerIds: [],
+						sourcePath: absPath,
+						createdAt: now,
+						updatedAt: now
+					};
+					importedFiles.push(mediaFile);
+					if (hash) seen.add(hash);
+				} catch (error) {
+					console.error("[upload] Failed to import", absPath, error);
+					failed.push(originalFileName);
+				}
+			}
+
+			if (importedFiles.length) addFiles(importedFiles);
+			setDuplicateReport(dupes);
+			await saveToProject(projectPath);
+			setMessage(
+				`Uploaded ${importedFiles.length} file(s)` +
+					(dupes.length ? `. Skipped ${dupes.length} duplicate(s)` : "") +
+					(failed.length ? `; ${failed.length} failed` : ".")
+			);
+			if (importedFiles.length) startReview(importedFiles);
+		} catch (error) {
+			console.error("Upload failed", error);
+			setMessage("Upload failed. The source files were not changed.");
+		}
+	};
+
 	const tryDeleteSourceOriginal = async (
 		file: MediaFile
 	): Promise<"deleted" | "missing" | "skipped" | "failed"> => {
@@ -1004,7 +1122,7 @@ export default function TrailCameraMediaManager({
 			const key = event.key;
 			if (key === "Escape") {
 				event.preventDefault();
-				setView(reviewReturnView);
+				leaveReview();
 				return;
 			}
 			if (reviewIndexRef.current >= reviewIdsRef.current.length) {
@@ -1039,6 +1157,11 @@ export default function TrailCameraMediaManager({
 				void classifyCurrent("known_buck");
 				return;
 			}
+			if (key === "6" || key === "s" || key === "S") {
+				event.preventDefault();
+				void classifyCurrent("scrub_buck");
+				return;
+			}
 			if (key === "ArrowLeft") {
 				event.preventDefault();
 				stepReview(-1);
@@ -1051,7 +1174,7 @@ export default function TrailCameraMediaManager({
 		};
 		window.addEventListener("keydown", onKeyDown, true);
 		return () => window.removeEventListener("keydown", onKeyDown, true);
-	}, [view, reviewReturnView, classifyCurrent, finishReview]);
+	}, [view, reviewReturnView, classifyCurrent, finishReview, leaveReview]);
 
 	const restoreFile = async (file: MediaFile) => {
 		if (!projectPath) return;
@@ -1111,6 +1234,12 @@ export default function TrailCameraMediaManager({
 		</button>
 	);
 
+	const toggleSelectedFile = (id: string) => {
+		setSelectedFileIds((current) =>
+			current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+		);
+	};
+
 	const renderGrid = (gridFiles: MediaFile[], reviewPool = gridFiles) => (
 		<div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: spacing.lg }}>
 			{gridFiles.map((file) => (
@@ -1123,9 +1252,63 @@ export default function TrailCameraMediaManager({
 							: siteNames.get(file.cameraSiteId || "")
 					}
 					deerNames={(file.knownDeerIds || []).map((id) => deerNames.get(id) || "Unknown deer")}
+					selected={selectedFileIds.includes(file.id)}
+					onToggleSelect={view === "cameras" && showingFileBrowser ? toggleSelectedFile : undefined}
 					onClick={() => startReview(reviewPool, file.id)}
 				/>
 			))}
+		</div>
+	);
+
+	const renderBulkCameraBar = (gridFiles: MediaFile[]) => (
+		<div
+			style={{
+				display: "flex",
+				gap: spacing.sm,
+				alignItems: "center",
+				flexWrap: "wrap",
+				padding: spacing.md,
+				border: `1px solid ${colors.borderMedium}`,
+				borderRadius: borderRadius.lg,
+				background: colors.bgSecondary
+			}}
+		>
+			<button
+				onClick={() => setSelectedFileIds(gridFiles.map((file) => file.id))}
+				disabled={!gridFiles.length}
+				style={buttonStyle}
+			>
+				Select all
+			</button>
+			<button
+				onClick={() => setSelectedFileIds([])}
+				disabled={!selectedFileIds.length}
+				style={{ ...buttonStyle, opacity: selectedFileIds.length ? 1 : 0.55 }}
+			>
+				Clear
+			</button>
+			<span style={{ fontSize: typography.fontSize.sm, color: colors.textSecondary }}>
+				{selectedFileIds.length} selected
+			</span>
+			<select
+				value={bulkSiteId}
+				onChange={(event) => setBulkSiteId(event.target.value)}
+				style={{ ...inputStyle, minWidth: 220 }}
+			>
+				<option value="">Assign camera site…</option>
+				{sites.map((site) => (
+					<option key={site.id} value={site.id}>
+						{site.areaName || propertyNames.get(site.propertyId || "") || "Property"} / {site.name}
+					</option>
+				))}
+			</select>
+			<button
+				onClick={() => void assignSelectedCamera()}
+				disabled={!selectedFileIds.length || !bulkSiteId}
+				style={{ ...primaryButtonStyle, opacity: selectedFileIds.length && bulkSiteId ? 1 : 0.55 }}
+			>
+				Apply to selected
+			</button>
 		</div>
 	);
 
@@ -1197,7 +1380,12 @@ export default function TrailCameraMediaManager({
 							Browse camera locations, review new media, and track known deer.
 						</div>
 					</div>
-					<button onClick={onOpenContent} style={buttonStyle}>Legacy library</button>
+					{view === "review" ? (
+						<button onClick={leaveReview} style={buttonStyle}>
+							Back{reviewReturnView === "deer" ? " to known deer" : " to cameras"}
+							<span style={shortcutHintStyle}>Esc</span>
+						</button>
+					) : null}
 					<button onClick={onClose} style={buttonStyle}>Close</button>
 				</header>
 
@@ -1245,13 +1433,23 @@ export default function TrailCameraMediaManager({
 						<div style={{ display: "grid", gap: spacing.xxl }}>
 							<div style={{ display: "flex", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
 								{crumbButton("Camera sites", cameraBrowse.level === "home" ? undefined : () => setCameraBrowse({ level: "home" }), cameraBrowse.level === "home")}
-								{cameraBrowse.level === "needs-review" || cameraBrowse.level === "needs-review-site" ? (
+								{cameraBrowse.level === "needs-review" || cameraBrowse.level === "needs-review-site" || cameraBrowse.level === "needs-review-reason" ? (
 									<>
 										<span style={{ color: colors.textMuted }}>/</span>
 										{crumbButton(
 											"Needs review",
 											cameraBrowse.level === "needs-review" ? undefined : () => setCameraBrowse({ level: "needs-review" }),
 											cameraBrowse.level === "needs-review"
+										)}
+									</>
+								) : null}
+								{cameraBrowse.level === "needs-review-reason" ? (
+									<>
+										<span style={{ color: colors.textMuted }}>/</span>
+										{crumbButton(
+											cameraBrowse.reason === "camera" ? "Need camera site" : "Need animal / buck ID",
+											undefined,
+											true
 										)}
 									</>
 								) : null}
@@ -1347,7 +1545,7 @@ export default function TrailCameraMediaManager({
 								<div style={folderGridStyle}>
 									<FolderCard
 										title="Needs review"
-										subtitle="Files that still need a classification"
+										subtitle="Still missing a camera site or an animal / buck ID"
 										meta={`${reviewNeededFiles.length} file${reviewNeededFiles.length === 1 ? "" : "s"}`}
 										accent="review"
 										onClick={() => setCameraBrowse({ level: "needs-review" })}
@@ -1367,19 +1565,38 @@ export default function TrailCameraMediaManager({
 
 							{cameraBrowse.level === "needs-review" ? (
 								reviewNeededFiles.length ? (
-									<div style={folderGridStyle}>
-										{pendingSiteIds.map((siteId) =>
-											renderLocationFolder(siteId, pendingBySiteId.get(siteId) || [], () =>
-												setCameraBrowse({ level: "needs-review-site", siteId })
-											)
-										)}
+									<div style={{ display: "grid", gap: spacing.xxl }}>
+										<div style={folderGridStyle}>
+											<FolderCard
+												title="Need camera site"
+												subtitle="Assign where these were taken"
+												meta={`${filesNeedingCamera.length} file${filesNeedingCamera.length === 1 ? "" : "s"}`}
+												accent="review"
+												onClick={() => setCameraBrowse({ level: "needs-review-reason", reason: "camera" })}
+											/>
+											<FolderCard
+												title="Need animal / buck ID"
+												subtitle="Classify the animal, or tag a known buck. Scrub buck is for small unnamed bucks."
+												meta={`${filesNeedingIdentity.length} file${filesNeedingIdentity.length === 1 ? "" : "s"}`}
+												accent="review"
+												onClick={() => setCameraBrowse({ level: "needs-review-reason", reason: "identity" })}
+											/>
+										</div>
+										<div style={{ fontSize: typography.fontSize.sm, color: colors.textMuted }}>By camera site</div>
+										<div style={folderGridStyle}>
+											{pendingSiteIds.map((siteId) =>
+												renderLocationFolder(siteId, pendingBySiteId.get(siteId) || [], () =>
+													setCameraBrowse({ level: "needs-review-site", siteId })
+												)
+											)}
+										</div>
 									</div>
 								) : (
 									<div style={{ color: colors.textMuted }}>Everything is reviewed.</div>
 								)
 							) : null}
 
-							{cameraBrowse.level === "site" || cameraBrowse.level === "needs-review-site" ? (
+							{showingFileBrowser ? (
 								<div style={{ display: "grid", gap: spacing.xxl }}>
 									{cameraBrowse.level === "site" && selectedSite ? (
 										<div style={{ display: "flex", gap: spacing.md, alignItems: "end", flexWrap: "wrap" }}>
@@ -1401,6 +1618,9 @@ export default function TrailCameraMediaManager({
 											>
 												{importing ? "Importing…" : "Import SD Card Folder"}
 											</button>
+											<button onClick={() => void handleUploadFiles()} style={buttonStyle}>
+												Upload files
+											</button>
 											{visibleSiteFiles.some(fileNeedsReview) ? (
 												<button
 													onClick={() => startReview(visibleSiteFiles.filter(fileNeedsReview))}
@@ -1411,6 +1631,24 @@ export default function TrailCameraMediaManager({
 											) : null}
 										</div>
 									) : null}
+									{cameraBrowse.level === "site" && browsingUnassigned ? (
+										<div style={{ display: "flex", gap: spacing.md, alignItems: "center", flexWrap: "wrap" }}>
+											<button onClick={() => void handleUploadFiles()} style={primaryButtonStyle}>
+												Upload files
+											</button>
+											{visibleSiteFiles.some(fileNeedsReview) ? (
+												<button
+													onClick={() => startReview(visibleSiteFiles.filter(fileNeedsReview))}
+													style={buttonStyle}
+												>
+													Review pending
+												</button>
+											) : null}
+											<span style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>
+												Select files to assign a camera site in bulk, or upload more here.
+											</span>
+										</div>
+									) : null}
 									{cameraBrowse.level === "needs-review-site" && visibleSiteFiles.length ? (
 										<div>
 											<button
@@ -1419,6 +1657,23 @@ export default function TrailCameraMediaManager({
 											>
 												Review {visibleSiteFiles.length} file{visibleSiteFiles.length === 1 ? "" : "s"}
 											</button>
+										</div>
+									) : null}
+									{cameraBrowse.level === "needs-review-reason" ? (
+										<div style={{ display: "flex", gap: spacing.md, alignItems: "center", flexWrap: "wrap" }}>
+											{visibleSiteFiles.length ? (
+												<button
+													onClick={() => startReview(visibleSiteFiles)}
+													style={primaryButtonStyle}
+												>
+													Review {visibleSiteFiles.length} file{visibleSiteFiles.length === 1 ? "" : "s"}
+												</button>
+											) : null}
+											<span style={{ fontSize: typography.fontSize.sm, color: colors.textMuted }}>
+												{cameraBrowse.reason === "camera"
+													? "Select files and assign a camera site, or review them one at a time."
+													: "Classify the animal, tag a known buck, or mark small unnamed bucks as Scrub buck."}
+											</span>
 										</div>
 									) : null}
 									{importing && importProgress ? (
@@ -1442,23 +1697,6 @@ export default function TrailCameraMediaManager({
 											</div>
 										</div>
 									) : null}
-									{folders.length && selectedSite && cameraBrowse.level === "site" ? (
-										<div style={{ display: "flex", gap: spacing.sm, alignItems: "center", flexWrap: "wrap" }}>
-											<select value={existingFolderId} onChange={(event) => setExistingFolderId(event.target.value)} style={{ ...inputStyle, minWidth: 240 }}>
-												<option value="">Choose an existing My Content folder…</option>
-												{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.path}</option>)}
-											</select>
-											<button
-												onClick={() => void linkExistingFolderToSite()}
-												disabled={!existingFolderId}
-												style={{ ...buttonStyle, opacity: existingFolderId ? 1 : 0.55 }}
-											>
-												Link folder to this site
-											</button>
-											<span style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>Links existing files in place; nothing is copied.</span>
-										</div>
-									) : null}
-
 									<div style={{ display: "flex", gap: spacing.xxl, color: colors.textSecondary, fontSize: typography.fontSize.sm }}>
 										<span>{visibleSiteFiles.length} media file{visibleSiteFiles.length === 1 ? "" : "s"}</span>
 										<span>{visibleSiteFiles.filter(fileNeedsReview).length} need review</span>
@@ -1467,10 +1705,18 @@ export default function TrailCameraMediaManager({
 												{importSessions.filter((session) => session.cameraSiteId === selectedSite.id).length} import session
 												{importSessions.filter((session) => session.cameraSiteId === selectedSite.id).length === 1 ? "" : "s"}
 											</span>
+										) : cameraBrowse.level === "needs-review-reason" ? (
+											<span>
+												{cameraBrowse.reason === "camera"
+													? `${visibleSiteFiles.filter(fileNeedsIdentity).length} also need an animal / buck ID`
+													: `${visibleSiteFiles.filter(fileNeedsCamera).length} also need a camera site`}
+											</span>
 										) : (
-											<span>Assign these files by opening them.</span>
+											<span>Select files to assign a camera site, or open one to review.</span>
 										)}
 									</div>
+
+									{visibleSiteFiles.length ? renderBulkCameraBar(visibleSiteFiles) : null}
 
 									{visibleSiteFiles.length ? (
 										renderGroupedGrid(visibleSiteFiles)
@@ -1478,6 +1724,10 @@ export default function TrailCameraMediaManager({
 										<div style={{ color: colors.textMuted }}>
 											{cameraBrowse.level === "needs-review-site"
 												? "Nothing left to review for this location."
+												: cameraBrowse.level === "needs-review-reason"
+												? cameraBrowse.reason === "camera"
+													? "Every file has a camera site."
+													: "Every file has an animal / buck ID."
 												: selectedSite
 												? "No media imported for this camera site yet."
 												: "No unassigned media."}
@@ -1520,17 +1770,6 @@ export default function TrailCameraMediaManager({
 										<button onClick={() => void createKnownDeer()} disabled={!newDeerName.trim()} style={buttonStyle}>
 											Add known deer
 										</button>
-										{folders.length ? (
-											<>
-												<select value={existingFolderId} onChange={(event) => setExistingFolderId(event.target.value)} style={inputStyle}>
-													<option value="">Use existing folder…</option>
-													{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.path}</option>)}
-												</select>
-												<button onClick={() => void createDeerFromFolder()} disabled={!existingFolderId} style={buttonStyle}>
-													Create deer from folder
-												</button>
-											</>
-										) : null}
 									</div>
 									{knownDeer.length ? (
 										<div style={folderGridStyle}>
@@ -1604,8 +1843,24 @@ export default function TrailCameraMediaManager({
 							</section>
 							<aside style={{ display: "flex", flexDirection: "column", gap: spacing.lg }}>
 								<div>
-									<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>
-										{Math.min(reviewIndex + 1, reviewFiles.length)} of {reviewFiles.length}
+									<div style={{ display: "flex", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
+										<button
+											onClick={() => stepReview(-1)}
+											disabled={reviewIndex <= 0}
+											style={{ ...buttonStyle, opacity: reviewIndex <= 0 ? 0.45 : 1 }}
+										>
+											Previous<span style={shortcutHintStyle}>←</span>
+										</button>
+										<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>
+											{Math.min(reviewIndex + 1, reviewFiles.length)} of {reviewFiles.length}
+										</div>
+										<button
+											onClick={() => stepReview(1)}
+											disabled={reviewIndex >= reviewFiles.length}
+											style={{ ...buttonStyle, opacity: reviewIndex >= reviewFiles.length ? 0.45 : 1 }}
+										>
+											Next<span style={shortcutHintStyle}>→</span>
+										</button>
 									</div>
 									<div style={{ fontWeight: typography.fontWeight.semibold, marginTop: spacing.xs }}>
 										{currentReviewFile?.name || "All files reviewed"}
@@ -1613,6 +1868,11 @@ export default function TrailCameraMediaManager({
 									{currentReviewFile ? (
 										<div style={{ fontSize: typography.fontSize.sm, color: colors.textMuted }}>
 											{formatCaptureDateTime(currentReviewFile.capturedAt || currentReviewFile.createdAt)}
+										</div>
+									) : null}
+									{currentReviewFile && formatReviewNeeds(currentReviewFile) ? (
+										<div style={{ marginTop: spacing.sm, fontSize: typography.fontSize.sm, color: colors.primary, fontWeight: typography.fontWeight.semibold }}>
+											Still needs {formatReviewNeeds(currentReviewFile)}
 										</div>
 									) : null}
 								</div>
@@ -1705,13 +1965,16 @@ export default function TrailCameraMediaManager({
 											<button onClick={() => void classifyCurrent("unknown_buck")} style={buttonStyle}>
 												Unknown buck<span style={shortcutHintStyle}>3</span>
 											</button>
+											<button onClick={() => void classifyCurrent("scrub_buck")} style={buttonStyle}>
+												Scrub buck<span style={shortcutHintStyle}>6</span>
+											</button>
 											<button onClick={() => void classifyCurrent("doe")} style={buttonStyle}>
 												Doe<span style={shortcutHintStyle}>2</span>
 											</button>
 											<button onClick={() => void classifyCurrent("other_animal")} style={buttonStyle}>
 												Other animal<span style={shortcutHintStyle}>4</span>
 											</button>
-											<button onClick={() => void classifyCurrent("blank")} style={{ ...buttonStyle, color: colors.error }}>
+											<button onClick={() => void classifyCurrent("blank")} style={{ ...buttonStyle, color: colors.error, gridColumn: "1 / -1" }}>
 												Blank / misfire<span style={shortcutHintStyle}>1</span>
 											</button>
 											<div style={{ gridColumn: "1 / -1", fontSize: typography.fontSize.xs, color: colors.textMuted }}>
@@ -1732,8 +1995,9 @@ export default function TrailCameraMediaManager({
 										<ReviewHotkeyLegend finished />
 									</>
 								)}
-								<button onClick={() => setView(reviewReturnView)} style={{ ...buttonStyle, marginTop: "auto" }}>
-									Exit review<span style={shortcutHintStyle}>Esc</span>
+								<button onClick={leaveReview} style={{ ...buttonStyle, marginTop: "auto" }}>
+									Back{reviewReturnView === "deer" ? " to known deer" : " to cameras"}
+									<span style={shortcutHintStyle}>Esc</span>
 								</button>
 							</aside>
 						</div>

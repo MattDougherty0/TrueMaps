@@ -3,9 +3,17 @@ import { create } from "zustand";
 export type MediaClassification =
 	| "known_buck"
 	| "unknown_buck"
+	| "scrub_buck"
 	| "doe"
 	| "other_animal"
 	| "blank";
+
+export type ReviewNeed = "camera" | "identity";
+
+export const REVIEW_NEED_LABELS: Record<ReviewNeed, string> = {
+	camera: "camera site",
+	identity: "animal / buck ID"
+};
 
 export type MediaFile = {
 	id: string;
@@ -72,8 +80,28 @@ export type StoredCameraSite = {
 	coordinates: [number, number] | null;
 };
 
-export const fileNeedsReview = (file: MediaFile): boolean =>
-	!file.trashedAt && !file.classification;
+export const fileNeedsCamera = (file: MediaFile): boolean =>
+	!file.trashedAt && !file.cameraSiteId;
+
+export const fileNeedsIdentity = (file: MediaFile): boolean => {
+	if (file.trashedAt) return false;
+	if (!file.classification) return true;
+	return file.classification === "known_buck" && !(file.knownDeerIds || []).length;
+};
+
+export const reviewNeeds = (file: MediaFile): ReviewNeed[] => {
+	const needs: ReviewNeed[] = [];
+	if (fileNeedsCamera(file)) needs.push("camera");
+	if (fileNeedsIdentity(file)) needs.push("identity");
+	return needs;
+};
+
+export const formatReviewNeeds = (file: MediaFile): string =>
+	reviewNeeds(file)
+		.map((need) => REVIEW_NEED_LABELS[need])
+		.join(" · ");
+
+export const fileNeedsReview = (file: MediaFile): boolean => reviewNeeds(file).length > 0;
 
 type MediaState = {
 	folders: MediaFolder[];
