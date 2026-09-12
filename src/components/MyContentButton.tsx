@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import useAppStore from "../state/store";
 import { fileNeedsReview, useMediaStore } from "../state/media";
-import MediaLibrary from "./media/MediaLibrary";
 import TrailCameraMediaManager from "./media/TrailCameraMediaManager";
 import { borderRadius, colors, spacing, typography } from "../lib/theme";
 
@@ -9,7 +8,7 @@ export default function MyContentButton() {
 	const { projectPath } = useAppStore();
 	const files = useMediaStore((state) => state.files);
 	const loadFromProject = useMediaStore((state) => state.loadFromProject);
-	const [open, setOpen] = useState<"trail-cameras" | "content" | null>(null);
+	const [open, setOpen] = useState(false);
 	const [initialCameraName, setInitialCameraName] = useState<string | null>(null);
 	const [initialCameraSiteId, setInitialCameraSiteId] = useState<string | null>(null);
 
@@ -23,7 +22,7 @@ export default function MyContentButton() {
 			const detail = (event as CustomEvent<{ cameraName?: string; cameraSiteId?: string }>).detail;
 			setInitialCameraName(detail?.cameraName || null);
 			setInitialCameraSiteId(detail?.cameraSiteId || null);
-			setOpen("trail-cameras");
+			setOpen(true);
 		};
 		window.addEventListener("trail-camera-media:open", onOpenTrailCameraMedia);
 		return () => window.removeEventListener("trail-camera-media:open", onOpenTrailCameraMedia);
@@ -40,7 +39,7 @@ export default function MyContentButton() {
 				onClick={() => {
 					setInitialCameraName(null);
 					setInitialCameraSiteId(null);
-					setOpen("trail-cameras");
+					setOpen(true);
 				}}
 				title={
 					needsReviewCount
@@ -88,15 +87,13 @@ export default function MyContentButton() {
 					</span>
 				) : null}
 			</button>
-			{open === "trail-cameras" ? (
+			{open ? (
 				<TrailCameraMediaManager
 					initialCameraName={initialCameraName}
 					initialCameraSiteId={initialCameraSiteId}
-					onClose={() => setOpen(null)}
-					onOpenContent={() => setOpen("content")}
+					onClose={() => setOpen(false)}
 				/>
 			) : null}
-			{open === "content" ? <MediaLibrary onClose={() => setOpen(null)} /> : null}
 		</>
 	);
 }
