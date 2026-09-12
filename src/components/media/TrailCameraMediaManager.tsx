@@ -15,6 +15,15 @@ import {
 	type CameraSite
 } from "../../lib/media/cameraSites";
 import { borderRadius, colors, spacing, typography } from "../../lib/theme";
+import {
+	classificationLabels,
+	describeMediaDuplicate,
+	findDuplicatePeers,
+	warningsFromMatches,
+	ensureMediaHashes,
+	type DuplicateWarning
+} from "../../lib/media/duplicates";
+import DuplicateWarningList from "./DuplicateWarningList";
 
 type ManagerView = "cameras" | "deer" | "trash" | "review";
 type CameraBrowse =
@@ -45,14 +54,6 @@ const safePathPart = (value: string): string =>
 const toMediaUrl = (mediaPath: string): string => {
 	const segments = mediaPath.split("/").filter(Boolean).map((part) => encodeURIComponent(part));
 	return `media:///${segments.join("/")}`;
-};
-
-const classificationLabels: Record<MediaClassification, string> = {
-	known_buck: "Known buck",
-	unknown_buck: "Unknown buck",
-	doe: "Doe",
-	other_animal: "Other animal",
-	blank: "Blank / misfire"
 };
 
 const inputStyle: CSSProperties = {
@@ -464,6 +465,7 @@ export default function TrailCameraMediaManager({
 	const [newSitePropertyId, setNewSitePropertyId] = useState("");
 	const [newSiteArea, setNewSiteArea] = useState("");
 	const [sdDeleteStats, setSdDeleteStats] = useState({ deleted: 0, missing: 0, failed: 0 });
+	const [duplicateReport, setDuplicateReport] = useState<DuplicateWarning[]>([]);
 	const reviewIndexRef = useRef(0);
 	const reviewIdsRef = useRef<string[]>([]);
 	const selectedDeerIdRef = useRef("");
@@ -565,6 +567,12 @@ export default function TrailCameraMediaManager({
 	);
 	const reviewFiles = reviewIds.map((id) => files.find((file) => file.id === id)).filter(Boolean) as MediaFile[];
 	const currentReviewFile = reviewFiles[reviewIndex] || null;
+	const currentFileDuplicates = useMemo(() => {
+		if (!currentReviewFile) return [];
+		return findDuplicatePeers(files, currentReviewFile).map((existing) =>
+			describeMediaDuplicate(existing, currentReviewFile.name, sites, propertyNames)
+		);
+	}, [currentReviewFile, files, sites, propertyNames]);
 
 	useEffect(() => {
 		reviewIndexRef.current = reviewIndex;
@@ -819,21 +827,12 @@ export default function TrailCameraMediaManager({
 			"Property";
 		const targetFolder = `${safePathPart(importArea)}/cameras/${safePathPart(selectedSite.name)}/${datePart}_${sessionId.slice(-8)}`;
 		setImporting(true);
+		setDuplicateReport([]);
 		setMessage("Indexing existing media for duplicate detection…");
 		try {
-			let knownHashes = files.map((file) => file.sha256).filter((hash): hash is string => Boolean(hash));
-			const missingHashes = files.filter((file) => !file.sha256 && !file.trashedAt);
-			if (missingHashes.length && typeof window.api.hashMediaFiles === "function") {
-				const indexed = await window.api.hashMediaFiles(projectPath, missingHashes.map((file) => file.path));
-				const hashByPath = new Map(indexed.map((item) => [item.path, item.sha256]));
-				const hashUpdates = missingHashes
-					.map((file) => ({ id: file.id, hash: hashByPath.get(file.path) }))
-					.filter((item): item is { id: string; hash: string } => Boolean(item.hash));
-				if (hashUpdates.length) {
-					updateFiles(hashUpdates.map((item) => ({ id: item.id, changes: { sha256: item.hash } })));
-					await saveToProject(projectPath);
-					knownHashes = [...knownHashes, ...hashUpdates.map((item) => item.hash)];
-				}
+			const knownHashes = await ensureMediaHashes(projectPath, files, updateFiles);
+			if (files.some((file) => !file.sha256 && !file.trashedAt)) {
+				await saveToProject(projectPath);
 			}
 			setMessage("Copying media and checking for duplicates…");
 			const result = await window.api.importTrailCameraMedia(
@@ -874,6 +873,14 @@ export default function TrailCameraMediaManager({
 				skippedDuplicates: result.skippedDuplicates,
 				failedFiles: result.failedFiles
 			});
+			const catalog = useMediaStore.getState().files;
+			const warnings = warningsFromMatches(
+				result.duplicateMatches || [],
+				catalog,
+				sites,
+				propertyNames
+			);
+			setDuplicateReport(warnings);
 			await saveToProject(projectPath);
 			setMessage(
 				`Imported ${importedFiles.length} file(s). Skipped ${result.skippedDuplicates} duplicate(s)` +
@@ -1223,6 +1230,11 @@ export default function TrailCameraMediaManager({
 				{message ? (
 					<div style={{ padding: `${spacing.md} ${spacing.xxl}`, background: colors.primaryLight, color: colors.textSecondary, fontSize: typography.fontSize.sm }}>
 						{message}
+					</div>
+				) : null}
+				{view !== "review" && duplicateReport.length ? (
+					<div style={{ padding: `${spacing.md} ${spacing.xxl}` }}>
+						<DuplicateWarningList items={duplicateReport} />
 					</div>
 				) : null}
 
@@ -1604,6 +1616,21 @@ export default function TrailCameraMediaManager({
 										</div>
 									) : null}
 								</div>
+
+								{currentFileDuplicates.length ? (
+									<DuplicateWarningList
+										compact
+										items={currentFileDuplicates}
+										title="Same file already exists"
+									/>
+								) : null}
+								{duplicateReport.length ? (
+									<DuplicateWarningList
+										compact
+										items={duplicateReport}
+										title={`${duplicateReport.length} file${duplicateReport.length === 1 ? "" : "s"} from this import were already in TrueMap`}
+									/>
+								) : null}
 
 								{currentReviewFile ? (
 									<>

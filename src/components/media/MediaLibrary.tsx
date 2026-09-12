@@ -2,8 +2,15 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import useAppStore from "../../state/store";
 import { useMediaStore, type MediaFile, type MediaFolder } from "../../state/media";
 import MediaViewer from "./MediaViewer";
+import DuplicateWarningList from "./DuplicateWarningList";
 import type { CSSProperties } from "react";
 import { colors } from "../../lib/theme";
+import {
+	describeMediaDuplicate,
+	ensureMediaHashes,
+	findCatalogMatch,
+	type DuplicateWarning
+} from "../../lib/media/duplicates";
 
 const toMediaUrl = (absolutePath: string, projectPath: string) => {
 	// Convert absolute path to relative path from project root, excluding "media/" prefix
@@ -41,12 +48,14 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 		deleteFolder,
 		addFile,
 		updateFile,
+		updateFiles,
 		deleteFile,
 		moveFile,
 		setSelectedFile,
 		setViewerOpen,
 		loadFromProject,
-		saveToProject
+		saveToProject,
+		cameraSites
 	} = useMediaStore();
 	const [creatingFolder, setCreatingFolder] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
@@ -54,6 +63,11 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 	const [notesText, setNotesText] = useState("");
 	const folderInputRef = useRef<HTMLInputElement>(null);
 	const [fileUrls, setFileUrls] = useState<Record<string, string>>({});
+	const [uploadNotice, setUploadNotice] = useState<{
+		imported: number;
+		failed: string[];
+		dupes: DuplicateWarning[];
+	} | null>(null);
 
 	useEffect(() => {
 		if (projectPath) {
@@ -138,36 +152,61 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 	const handleUploadFiles = async () => {
 		if (!projectPath) return;
 		const selectedFiles = await window.api.chooseFiles([
-			{ name: "All Media Files", extensions: ["jpg", "jpeg", "png", "gif", "webp", "mp4", "mov", "avi", "mkv", "webm"] },
-			{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp"] },
-			{ name: "Videos", extensions: ["mp4", "mov", "avi", "mkv", "webm"] },
+			{ name: "All Media Files", extensions: ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "mp4", "mov", "avi", "mkv", "webm", "m4v"] },
+			{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"] },
+			{ name: "Videos", extensions: ["mp4", "mov", "avi", "mkv", "webm", "m4v"] },
 			{ name: "All Files", extensions: ["*"] }
 		]);
 		if (!selectedFiles || selectedFiles.length === 0) return;
+		setUploadNotice(null);
+		await ensureMediaHashes(projectPath, files, updateFiles);
+		const catalog = useMediaStore.getState().files;
+		const hashed =
+			typeof window.api.hashExternalFiles === "function"
+				? await window.api.hashExternalFiles(selectedFiles)
+				: [];
+		const hashByPath = new Map(hashed.map((item) => [item.path, item.sha256]));
+		const seen = new Set(catalog.map((file) => file.sha256).filter((hash): hash is string => Boolean(hash)));
+		let imported = 0;
+		const dupes: DuplicateWarning[] = [];
+		const failed: string[] = [];
 		for (const absPath of selectedFiles) {
 			const originalFileName = absPath.split(/[/\\]/).pop() || "";
-			const isVideo = /\.(mp4|mov|avi|mkv|webm)$/i.test(originalFileName);
-			const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(originalFileName);
+			const isVideo = /\.(mp4|mov|avi|mkv|webm|m4v)$/i.test(originalFileName);
+			const isImage = /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i.test(originalFileName);
 			if (!isVideo && !isImage) continue;
-			// Copy file to media directory (handles duplicates, nested folders, and .avi -> .mp4 conversion)
-			const copiedRelPath = await window.api.copyToMedia(projectPath, absPath, currentFolderPath || undefined);
-			// Extract the actual file name from the returned path (may be .mp4 if converted from .avi)
-			// Remove "media/" prefix if present, then get the filename
-			let pathWithoutMedia = copiedRelPath.startsWith("media/") ? copiedRelPath.slice(6) : copiedRelPath;
-			const actualFileName = pathWithoutMedia.split("/").pop() || originalFileName;
-			console.log(`[upload] Original: ${originalFileName}, Copied path: ${copiedRelPath}, Actual filename: ${actualFileName}`);
-			const logicalPath = currentFolderPath ? `${currentFolderPath}/${actualFileName}` : actualFileName;
-			const mediaFile: MediaFile = {
-				id: `file_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-				name: actualFileName,
-				path: logicalPath,
-				type: isVideo ? "video" : "image",
-				createdAt: new Date().toISOString(),
-				updatedAt: new Date().toISOString()
-			};
-			addFile(mediaFile);
+			try {
+				const hash = hashByPath.get(absPath);
+				if (hash) {
+					const existing = findCatalogMatch(catalog, hash);
+					if (existing || seen.has(hash)) {
+						if (existing) dupes.push(describeMediaDuplicate(existing, originalFileName, cameraSites));
+						continue;
+					}
+				}
+				const copiedRelPath = await window.api.copyToMedia(projectPath, absPath, currentFolderPath || undefined);
+				let pathWithoutMedia = copiedRelPath.startsWith("media/") ? copiedRelPath.slice(6) : copiedRelPath;
+				const actualFileName = pathWithoutMedia.split("/").pop() || originalFileName;
+				const logicalPath = currentFolderPath ? `${currentFolderPath}/${actualFileName}` : actualFileName;
+				const mediaFile: MediaFile = {
+					id: `file_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+					name: actualFileName,
+					path: logicalPath,
+					type: isVideo ? "video" : "image",
+					sha256: hash,
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString()
+				};
+				addFile(mediaFile);
+				if (hash) seen.add(hash);
+				imported += 1;
+			} catch (error) {
+				console.error("[upload] Failed to import", absPath, error);
+				failed.push(originalFileName);
+			}
 		}
 		await saveToProject(projectPath);
+		setUploadNotice({ imported, failed, dupes });
 	};
 
 	const handleFileClick = (file: MediaFile) => {
@@ -415,6 +454,16 @@ export default function MediaLibrary({ onClose }: { onClose: () => void }) {
 							Upload Files
 						</button>
 					</div>
+
+					{uploadNotice ? (
+						<div style={{ padding: "12px 20px", borderBottom: `1px solid ${colors.line10}` }}>
+							<div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: uploadNotice.dupes.length ? 8 : 0 }}>
+								Imported {uploadNotice.imported} file{uploadNotice.imported === 1 ? "" : "s"}
+								{uploadNotice.failed.length ? ` · ${uploadNotice.failed.length} failed` : ""}
+							</div>
+							{uploadNotice.dupes.length ? <DuplicateWarningList items={uploadNotice.dupes} /> : null}
+						</div>
+					) : null}
 
 					{/* Content Area */}
 					<div style={{ flex: 1, overflow: "auto", padding: 20 }}>

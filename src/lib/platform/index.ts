@@ -15,6 +15,7 @@ export interface PlatformAPI {
 	copyToMedia(baseDir: string, sourceAbsolutePath: string, targetFolderPath?: string): Promise<string>;
 	resolveMediaPath(baseDir: string, relativePath: string): Promise<string>;
 	hashMediaFiles?(baseDir: string, mediaPaths: string[]): Promise<Array<{ path: string; sha256: string }>>;
+	hashExternalFiles?(absolutePaths: string[]): Promise<Array<{ path: string; sha256: string }>>;
 	deleteFile(absolutePath: string): Promise<boolean>;
 	deleteTrailCameraSource?(payload: {
 		projectPath: string;
@@ -47,6 +48,11 @@ export interface PlatformAPI {
 		skippedDuplicates: number;
 		skippedUnsupported: number;
 		failedFiles: string[];
+		duplicateMatches?: Array<{
+			sha256: string;
+			sourceName: string;
+			sourceRelativePath: string;
+		}>;
 	}>;
 	onTrailCameraImportProgress?(
 		listener: (progress: { processed: number; total: number; fileName: string; stage: string }) => void

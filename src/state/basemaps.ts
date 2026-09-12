@@ -14,7 +14,7 @@ export const useBasemapStore = create<BasemapState>((set) => ({
 		hillshade: true,
 		slope: false,
 		contours: true,
-		topoOverlay: true
+		topoOverlay: false
 	},
 	setVisible: (key, value) =>
 		set((s) => ({ visible: { ...s.visible, [key]: value } }))

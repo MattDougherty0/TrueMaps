@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld("api", {
 		ipcRenderer.invoke("media:resolvePath", baseDir, relativePath),
 	hashMediaFiles: (baseDir: string, mediaPaths: string[]): Promise<Array<{ path: string; sha256: string }>> =>
 		ipcRenderer.invoke("media:hashFiles", baseDir, mediaPaths),
+	hashExternalFiles: (absolutePaths: string[]): Promise<Array<{ path: string; sha256: string }>> =>
+		ipcRenderer.invoke("media:hashExternalFiles", absolutePaths),
 	deleteFile: (absolutePath: string): Promise<boolean> =>
 		ipcRenderer.invoke("media:deleteFile", absolutePath),
 	deleteTrailCameraSource: (
@@ -66,6 +68,11 @@ contextBridge.exposeInMainWorld("api", {
 		skippedDuplicates: number;
 		skippedUnsupported: number;
 		failedFiles: string[];
+		duplicateMatches: Array<{
+			sha256: string;
+			sourceName: string;
+			sourceRelativePath: string;
+		}>;
 	}> => ipcRenderer.invoke("media:importTrailCamera", baseDir, sourceDirAbsolutePath, targetFolderPath, knownHashes),
 	onTrailCameraImportProgress: (
 		listener: (progress: { processed: number; total: number; fileName: string; stage: string }) => void

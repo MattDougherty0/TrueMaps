@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { app, BrowserWindow, dialog, ipcMain, protocol } from "electron";
+import { spawn } from "child_process";
 import * as path from "path";
 import * as fs from "fs/promises";
 import * as fssync from "fs";
@@ -10,13 +11,67 @@ const PDFDocument = require("pdfkit");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const sqlite3 = require("sqlite3");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const ffmpeg = require("fluent-ffmpeg");
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const ffmpegStatic = require("ffmpeg-static");
+// Electron patches fs to look inside asar; child_process.spawn does not.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const originalFs: typeof fssync = process.versions.electron ? require("original-fs") : fssync;
 
-// Set ffmpeg path if available
-if (ffmpegStatic) {
-	ffmpeg.setFfmpegPath(ffmpegStatic);
+let ffmpegBinaryPath: string | null | undefined;
+
+function pathOutsideAsar(filePath: string): string {
+	const packed = `${path.sep}app.asar${path.sep}`;
+	const unpacked = `${path.sep}app.asar.unpacked${path.sep}`;
+	if (filePath.includes(unpacked)) return filePath;
+	if (filePath.includes(packed)) return filePath.replace(packed, unpacked);
+	return filePath;
+}
+
+function isSpawnableBinary(filePath: string): boolean {
+	if (!filePath) return false;
+	const packed = `${path.sep}app.asar${path.sep}`;
+	const unpacked = `${path.sep}app.asar.unpacked${path.sep}`;
+	if (filePath.includes(packed) && !filePath.includes(unpacked)) return false;
+	try {
+		return originalFs.statSync(filePath).isFile();
+	} catch {
+		return false;
+	}
+}
+
+function resolveFfmpegBinary(): string | null {
+	const binaryName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+	const fromModule = typeof ffmpegStatic === "string" ? ffmpegStatic : "";
+	const candidates = [
+		path.join(process.resourcesPath || "", "bin", binaryName),
+		fromModule ? pathOutsideAsar(fromModule) : "",
+		fromModule
+	].filter(Boolean);
+	const seen = new Set<string>();
+	for (const candidate of candidates) {
+		if (seen.has(candidate)) continue;
+		seen.add(candidate);
+		if (isSpawnableBinary(candidate)) return candidate;
+	}
+	return null;
+}
+
+function ensureFfmpegConfigured(): string | null {
+	if (ffmpegBinaryPath !== undefined) return ffmpegBinaryPath;
+	const binary = resolveFfmpegBinary();
+	if (!binary) {
+		console.warn("[video] ffmpeg binary is not spawnable; conversion will be skipped");
+		ffmpegBinaryPath = null;
+		return null;
+	}
+	try {
+		originalFs.chmodSync(binary, 0o755);
+	} catch {
+		// already executable, or chmod is not permitted
+	}
+	process.env.FFMPEG_PATH = binary;
+	console.log("[video] using ffmpeg at", binary);
+	ffmpegBinaryPath = binary;
+	return binary;
 }
 
 // CRITICAL: Register custom protocol schemes BEFORE app is ready (must be synchronous)
@@ -131,37 +186,110 @@ async function ensureDirectoryInsideBase(baseDir: string, relativePath: string):
 	return target;
 }
 
-async function convertVideoToMP4(inputPath: string, outputPath: string): Promise<void> {
+async function assertReadableMediaFile(sourceAbsolutePath: string): Promise<void> {
+	let st;
+	try {
+		st = await fs.stat(sourceAbsolutePath);
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "ENOENT") {
+			throw new Error(
+				"That file is not available. If it is in iCloud Photos, download it to this Mac first."
+			);
+		}
+		throw error;
+	}
+	if (!st.isFile()) {
+		throw new Error("TrueMap can only import regular photo and video files.");
+	}
+	if (sourceAbsolutePath.toLowerCase().endsWith(".icloud")) {
+		throw new Error("That item is still in iCloud. Download it in Photos, then import again.");
+	}
+}
+
+function runFfmpeg(binary: string, args: string[]): Promise<void> {
 	return new Promise((resolve, reject) => {
-		ffmpeg(inputPath)
-			.videoCodec("libx264")
-			.audioCodec("aac")
-			.outputOptions([
-				"-preset", "fast",
-				"-crf", "23",
-				"-movflags", "+faststart", // Enable fast start for web playback
-				"-pix_fmt", "yuv420p", // Ensure compatibility
-				"-profile:v", "baseline", // Maximum compatibility
-				"-level", "3.0"
-			])
-			.on("start", (commandLine: string) => {
-				console.log(`[video] Converting: ${commandLine}`);
-			})
-			.on("progress", (progress: { percent?: number }) => {
-				if (progress.percent !== undefined) {
-					console.log(`[video] Conversion progress: ${Math.round(progress.percent)}%`);
-				}
-			})
-			.on("end", () => {
-				console.log(`[video] ✓ Conversion complete: ${outputPath}`);
-				resolve();
-			})
-			.on("error", (err: Error) => {
-				console.error(`[video] Conversion error:`, err);
-				reject(err);
-			})
-			.save(outputPath);
+		try {
+			const proc = spawn(binary, args, { windowsHide: true });
+			let stderr = "";
+			proc.stderr?.on("data", (chunk) => {
+				stderr += chunk.toString();
+			});
+			proc.on("error", (err) => reject(err));
+			proc.on("close", (code) => {
+				if (code === 0) resolve();
+				else reject(new Error(stderr.trim() || `ffmpeg exited with code ${code}`));
+			});
+		} catch (err) {
+			reject(err);
+		}
 	});
+}
+
+async function convertVideoToMP4(inputPath: string, outputPath: string): Promise<void> {
+	const binary = ensureFfmpegConfigured();
+	if (!binary) {
+		throw new Error("ffmpeg is not available in this installation");
+	}
+	console.log(`[video] Converting ${path.basename(inputPath)} -> ${path.basename(outputPath)}`);
+	await runFfmpeg(binary, [
+		"-y",
+		"-i",
+		inputPath,
+		"-c:v",
+		"libx264",
+		"-preset",
+		"fast",
+		"-crf",
+		"23",
+		"-c:a",
+		"aac",
+		"-movflags",
+		"+faststart",
+		"-pix_fmt",
+		"yuv420p",
+		"-profile:v",
+		"baseline",
+		"-level",
+		"3.0",
+		outputPath
+	]);
+	console.log(`[video] ✓ Conversion complete: ${outputPath}`);
+}
+
+async function convertAviOrCopy(
+	sourceAbsolutePath: string,
+	destDir: string,
+	originalName: string
+): Promise<string> {
+	const parsed = path.parse(originalName);
+	const mp4Dest = await availableDestination(destDir, `${parsed.name}.mp4`);
+	try {
+		await convertVideoToMP4(sourceAbsolutePath, mp4Dest);
+		return mp4Dest;
+	} catch (err) {
+		console.error("[video] Conversion failed, copying original:", err);
+		try {
+			await fs.unlink(mp4Dest);
+		} catch {
+			// conversion may not have created an output file
+		}
+		const fallback = await availableDestination(destDir, originalName);
+		await fs.copyFile(sourceAbsolutePath, fallback);
+		return fallback;
+	}
+}
+
+async function importMediaFile(sourceAbsolutePath: string, destDir: string): Promise<string> {
+	await assertReadableMediaFile(sourceAbsolutePath);
+	await fs.mkdir(destDir, { recursive: true });
+	const original = path.basename(sourceAbsolutePath);
+	if (path.extname(original).toLowerCase() === ".avi") {
+		return convertAviOrCopy(sourceAbsolutePath, destDir, original);
+	}
+	const destPath = await availableDestination(destDir, original);
+	await fs.copyFile(sourceAbsolutePath, destPath);
+	return destPath;
 }
 
 app.whenReady().then(() => {
@@ -289,8 +417,11 @@ app.whenReady().then(() => {
 					".png": "image/png",
 					".gif": "image/gif",
 					".webp": "image/webp",
+					".heic": "image/heic",
+					".heif": "image/heif",
 					".mp4": "video/mp4",
 					".mov": "video/quicktime",
+					".m4v": "video/x-m4v",
 					".avi": "video/x-msvideo",
 					".mkv": "video/x-matroska",
 					".webm": "video/webm"
@@ -415,50 +546,26 @@ app.whenReady().then(() => {
 		async (_event, baseDir: string, sourceAbsolutePath: string, targetFolderPath?: string): Promise<string> => {
 			const mediaDir = path.resolve(baseDir, "media");
 			const targetDir = targetFolderPath ? path.join(mediaDir, targetFolderPath) : mediaDir;
-			await fs.mkdir(targetDir, { recursive: true });
-			const original = path.basename(sourceAbsolutePath);
-			const { name, ext } = path.parse(original);
-			
-			// Check if it's an .avi file that needs conversion
-			const isAvi = ext.toLowerCase() === ".avi";
-			const finalExt = isAvi ? ".mp4" : ext;
-			const finalName = isAvi ? `${name}${finalExt}` : original;
-			
-			let destPath = path.join(targetDir, finalName);
-			let i = 1;
-			while (fssync.existsSync(destPath)) {
-				const baseName = isAvi ? name : path.parse(original).name;
-				destPath = path.join(targetDir, `${baseName}_${i}${finalExt}`);
-				i += 1;
-			}
-			
-			if (isAvi) {
-				// Convert .avi to .mp4
-				console.log(`[video] Converting .avi to .mp4: ${original} -> ${path.basename(destPath)}`);
-				try {
-					await convertVideoToMP4(sourceAbsolutePath, destPath);
-				} catch (err) {
-					console.error(`[video] Conversion failed:`, err);
-					// If conversion fails, use original file with .avi extension
-					const fallbackPath = path.join(targetDir, original);
-					let fallbackDest = fallbackPath;
-					let j = 1;
-					while (fssync.existsSync(fallbackDest)) {
-						fallbackDest = path.join(targetDir, `${name}_${j}${ext}`);
-						j += 1;
-					}
-					console.log(`[video] Falling back to original file: ${fallbackDest}`);
-					await fs.copyFile(sourceAbsolutePath, fallbackDest);
-					destPath = fallbackDest;
-				}
-			} else {
-				// Copy file as-is
-				await fs.copyFile(sourceAbsolutePath, destPath);
-			}
-			
+			const destPath = await importMediaFile(sourceAbsolutePath, targetDir);
 			const relativeToProject = path.relative(baseDir, destPath).split(path.sep).join("/");
 			console.log(`[media:copy] Returning relative path: ${relativeToProject} (destPath: ${destPath})`);
 			return relativeToProject;
+		}
+	);
+
+	ipcMain.handle(
+		"media:hashExternalFiles",
+		async (_event, absolutePaths: string[]): Promise<Array<{ path: string; sha256: string }>> => {
+			const results: Array<{ path: string; sha256: string }> = [];
+			for (const absolutePath of Array.isArray(absolutePaths) ? absolutePaths : []) {
+				try {
+					await assertReadableMediaFile(absolutePath);
+					results.push({ path: absolutePath, sha256: await sha256File(absolutePath) });
+				} catch (error) {
+					console.warn("[media:hashExternalFiles] Failed to hash", absolutePath, error);
+				}
+			}
+			return results;
 		}
 	);
 
@@ -567,7 +674,7 @@ app.whenReady().then(() => {
 			if (!resolved.startsWith(mediaDir)) {
 				throw new Error("Folder must be inside project media/");
 			}
-			const allowed = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".mp4", ".mov"]);
+			const allowed = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".mp4", ".mov", ".m4v", ".avi"]);
 			const out: Array<{ rel: string; mtime: number }> = [];
 			const walk = async (dirAbs: string) => {
 				const entries = await fs.readdir(dirAbs, { withFileTypes: true } as any);
@@ -609,7 +716,7 @@ app.whenReady().then(() => {
 				throw new Error("Target must be inside project media/");
 			}
 			await fs.mkdir(targetAbs, { recursive: true });
-			const allowed = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".mp4", ".mov", ".avi"]);
+			const allowed = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"]);
 			const copied: string[] = [];
 			const walk = async (dirAbs: string) => {
 				const entries = await fs.readdir(dirAbs, { withFileTypes: true } as any);
@@ -621,17 +728,9 @@ app.whenReady().then(() => {
 					}
 					const ext = path.extname(ent.name).toLowerCase();
 					if (!allowed.has(ext)) continue;
-					const destAbs = path.join(targetAbs, ent.name);
 					try {
-						if (ext === ".avi") {
-							const { name } = path.parse(ent.name);
-							const mp4Dest = path.join(targetAbs, `${name}.mp4`);
-							await convertVideoToMP4(fp, mp4Dest);
-							copied.push(path.relative(baseDir, mp4Dest).split(path.sep).join("/"));
-						} else {
-							await fs.copyFile(fp, destAbs);
-							copied.push(path.relative(baseDir, destAbs).split(path.sep).join("/"));
-						}
+						const destAbs = await importMediaFile(fp, targetAbs);
+						copied.push(path.relative(baseDir, destAbs).split(path.sep).join("/"));
 					} catch (err) {
 						console.warn("[media:importFolder] Failed to import", fp, err);
 					}
@@ -664,6 +763,11 @@ app.whenReady().then(() => {
 			skippedDuplicates: number;
 			skippedUnsupported: number;
 			failedFiles: string[];
+			duplicateMatches: Array<{
+				sha256: string;
+				sourceName: string;
+				sourceRelativePath: string;
+			}>;
 		}> => {
 			const importKey = path.resolve(baseDir);
 			if (activeTrailCameraImports.has(importKey)) {
@@ -675,8 +779,8 @@ app.whenReady().then(() => {
 			const sourceDir = path.resolve(sourceDirAbsolutePath);
 			const targetDir = await ensureDirectoryInsideBase(mediaDir, targetFolderPath);
 
-			const imageExts = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"]);
-			const videoExts = new Set([".mp4", ".mov", ".avi"]);
+			const imageExts = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"]);
+			const videoExts = new Set([".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"]);
 			const known = new Set(Array.isArray(knownHashes) ? knownHashes.filter(Boolean) : []);
 			const seenThisImport = new Set<string>();
 			const sourceFiles: string[] = [];
@@ -721,14 +825,26 @@ app.whenReady().then(() => {
 				sourceRelativePath: string;
 			}> = [];
 			const failedFiles: string[] = [];
+			const duplicateMatches: Array<{
+				sha256: string;
+				sourceName: string;
+				sourceRelativePath: string;
+			}> = [];
 			let skippedDuplicates = 0;
 
 			let processed = 0;
 			for (const sourcePath of sourceFiles) {
 				try {
+					await assertReadableMediaFile(sourcePath);
 					const hash = await sha256File(sourcePath);
+					const sourceRelativePath = path.relative(sourceDir, sourcePath).split(path.sep).join("/");
 					if (known.has(hash) || seenThisImport.has(hash)) {
 						skippedDuplicates += 1;
+						duplicateMatches.push({
+							sha256: hash,
+							sourceName: path.basename(sourcePath),
+							sourceRelativePath
+						});
 						processed += 1;
 						event.sender.send("media:importTrailCameraProgress", {
 							processed,
@@ -743,8 +859,6 @@ app.whenReady().then(() => {
 					const stat = await fs.stat(sourcePath);
 					const parsed = path.parse(sourcePath);
 					const isAvi = parsed.ext.toLowerCase() === ".avi";
-					const outputName = isAvi ? `${parsed.name}.mp4` : parsed.base;
-					const destination = await availableDestination(targetDir, outputName);
 					event.sender.send("media:importTrailCameraProgress", {
 						processed,
 						total: sourceFiles.length,
@@ -752,11 +866,9 @@ app.whenReady().then(() => {
 						stage: isAvi ? "converting" : "copying"
 					});
 
-					if (isAvi) {
-						await convertVideoToMP4(sourcePath, destination);
-					} else {
-						await fs.copyFile(sourcePath, destination);
-					}
+					const destination = isAvi
+						? await convertAviOrCopy(sourcePath, targetDir, parsed.base)
+						: await importMediaFile(sourcePath, targetDir);
 
 					const relativePath = path.relative(mediaDir, destination).split(path.sep).join("/");
 					imported.push({
@@ -767,7 +879,7 @@ app.whenReady().then(() => {
 						size: stat.size,
 						capturedAt: stat.mtime.toISOString(),
 						sourcePath,
-						sourceRelativePath: path.relative(sourceDir, sourcePath).split(path.sep).join("/")
+						sourceRelativePath
 					});
 				} catch (error) {
 					console.warn("[media:importTrailCamera] Failed to import", sourcePath, error);
@@ -786,7 +898,8 @@ app.whenReady().then(() => {
 				files: imported,
 				skippedDuplicates,
 				skippedUnsupported,
-				failedFiles
+				failedFiles,
+				duplicateMatches
 			};
 			} finally {
 				activeTrailCameraImports.delete(importKey);

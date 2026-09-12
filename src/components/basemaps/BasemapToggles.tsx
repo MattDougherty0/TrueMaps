@@ -34,7 +34,6 @@ export default function BasemapToggles() {
 			setHistEnabled(false);
 			setVisible("topo", false);
 			setVisible("aerial", true);
-			setVisible("topoOverlay", true);
 			return;
 		}
 		// historical
@@ -182,7 +181,7 @@ export default function BasemapToggles() {
 					</div>
 				) : null}
 				<div style={{ gridColumn: "1 / -1", fontSize: typography.fontSize.sm, color: colors.textMuted, marginTop: spacing.xs }}>
-					Overlays {is3D ? "(Topo / creeks drapes as lines; hillshade and slope stay 2D)" : "(stay on with Aerial)"}
+					Overlays {is3D ? "(Topo / creeks drapes as lines; hillshade and slope stay 2D)" : "(optional on Aerial — leave Topo / creeks off for full-color imagery)"}
 				</div>
 				<label style={{ display: "flex", alignItems: "center", gap: spacing.sm, cursor: "pointer", color: colors.textPrimary }}>
 					<input
