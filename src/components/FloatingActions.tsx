@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { layerConfigById } from "../lib/geo/layerConfig";
 import type { LayerId } from "../lib/geo/schema";
+import { colors } from "../lib/theme";
 
 const categoryStyle: CSSProperties = {
 	display: "flex",
@@ -8,8 +9,9 @@ const categoryStyle: CSSProperties = {
 	gap: 6,
 	padding: 8,
 	borderRadius: 6,
-	background: "rgba(255,255,255,0.95)",
-	border: "1px solid rgba(0,0,0,0.08)"
+	background: colors.chrome95,
+	border: `1px solid ${colors.border}`,
+	color: colors.textPrimary
 };
 
 const itemButtonStyle: CSSProperties = {
@@ -17,19 +19,20 @@ const itemButtonStyle: CSSProperties = {
 	alignItems: "center",
 	gap: 8,
 	padding: "6px 10px",
-	background: "#f7f7f7",
+	background: colors.galleryBtn,
 	borderRadius: 6,
-	border: "1px solid rgba(0,0,0,0.06)",
+	border: `1px solid ${colors.border}`,
 	fontSize: 13,
 	cursor: "pointer",
-	justifyContent: "flex-start"
+	justifyContent: "flex-start",
+	color: colors.textPrimary
 };
 
 const primaryButtonStyle: CSSProperties = {
 	padding: "10px 16px",
 	borderRadius: 999,
-	background: "#0a84ff",
-	color: "#fff",
+	background: colors.accentBlue,
+	color: colors.textOnPrimary,
 	border: "none",
 	fontSize: 15,
 	fontWeight: 600,
@@ -173,9 +176,9 @@ export default function FloatingActions() {
 									onClick={closeAnd(deleteSelectedTrail)}
 									style={{
 										...itemButtonStyle,
-										background: "#ffecec",
-										borderColor: "rgba(255,0,0,0.15)",
-										color: "#c62828"
+										background: colors.drawActiveBg,
+										borderColor: colors.drawActiveBorder,
+										color: colors.dangerText
 									}}
 								>
 									<span style={{ fontSize: 16 }}>🗑️</span>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { WidgetProps } from "@rjsf/utils";
 import useAppStore from "../../state/store";
+import { colors } from "../../lib/theme";
 
 const containerStyle: React.CSSProperties = {
 	display: "flex",
@@ -20,8 +21,8 @@ const thumbWrapperStyle: React.CSSProperties = {
 	height: 72,
 	borderRadius: 6,
 	overflow: "hidden",
-	border: "1px solid rgba(0,0,0,0.1)",
-	background: "#f3f3f3"
+	border: `1px solid ${colors.galleryBorder}`,
+	background: colors.galleryThumb
 };
 
 const removeButtonStyle: React.CSSProperties = {
@@ -42,15 +43,16 @@ const removeButtonStyle: React.CSSProperties = {
 
 const emptyStyle: React.CSSProperties = {
 	fontSize: 12,
-	color: "rgba(0,0,0,0.45)"
+	color: colors.galleryEmpty
 };
 
 const buttonStyle: React.CSSProperties = {
 	alignSelf: "flex-start",
 	padding: "6px 12px",
 	borderRadius: 6,
-	border: "1px solid rgba(0,0,0,0.12)",
-	background: "#f7f7f7",
+	border: `1px solid ${colors.galleryBtnBorder}`,
+	background: colors.galleryBtn,
+	color: colors.textPrimary,
 	cursor: "pointer"
 };
 

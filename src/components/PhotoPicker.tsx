@@ -16,7 +16,7 @@ export default function PhotoPicker({
 		onPicked(rel);
 	};
 	return (
-		<button onClick={() => void pick()} disabled={!projectPath}>
+		<button className="photo-picker-btn" onClick={() => void pick()} disabled={!projectPath}>
 			Attach Photo
 		</button>
 	);

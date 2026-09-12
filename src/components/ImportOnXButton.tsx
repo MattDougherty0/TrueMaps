@@ -3,6 +3,7 @@ import { runOnxImportWithDialog } from "../importers/onx";
 import { useState } from "react";
 import ImportOnXDialog from "./ImportOnXDialog";
 import { useUserStore } from "../state/user";
+import { colors } from "../lib/theme";
 
 export default function ImportOnXButton() {
 	const { projectPath } = useAppStore();
@@ -90,13 +91,14 @@ export default function ImportOnXButton() {
 					left: 360,
 					padding: "8px 14px",
 					borderRadius: 6,
-					border: "1px solid rgba(15,23,42,0.12)",
-					background: "#ffffff",
+					border: `1px solid ${colors.line}`,
+					background: colors.chrome,
+					color: colors.textPrimary,
 					cursor: "pointer",
 					fontSize: 13,
 					fontWeight: 500,
 					zIndex: 1000,
-					boxShadow: "0 6px 18px rgba(15,23,42,0.12)"
+					boxShadow: colors.shadowChrome
 				}}
 			>
 				{status || "Import onX"}
@@ -109,15 +111,16 @@ export default function ImportOnXButton() {
 						left: 244,
 						padding: 12,
 						borderRadius: 8,
-						border: "1px solid rgba(15,23,42,0.12)",
-						background: "#ffffff",
-						boxShadow: "0 6px 18px rgba(15,23,42,0.12)",
+						border: `1px solid ${colors.line}`,
+						background: colors.chrome,
+						boxShadow: colors.shadowChrome,
 						zIndex: 1000,
-						minWidth: 260
+						minWidth: 260,
+						color: colors.textPrimary
 					}}
 				>
 					<div style={{ fontWeight: 600, marginBottom: 6 }}>Import Summary</div>
-					<div style={{ fontSize: 12, color: "#334155", lineHeight: 1.6 }}>
+					<div style={{ fontSize: 12, color: colors.inkLabel, lineHeight: 1.6 }}>
 						<div>Imported: {summary.importedTotal} feature(s) across {summary.layerCount} layer(s)</div>
 						<div>Duplicates: {summary.duplicates}</div>
 						<div>Unknown: {summary.unknown}</div>
@@ -144,8 +147,8 @@ export default function ImportOnXButton() {
 							style={{
 								padding: "6px 10px",
 								borderRadius: 6,
-								border: "1px solid #0a84ff",
-								background: "#0a84ff",
+								border: `1px solid ${colors.accentBlue}`,
+								background: colors.accentBlue,
 								color: "#ffffff",
 								cursor: "pointer",
 								fontSize: 12,
@@ -159,8 +162,9 @@ export default function ImportOnXButton() {
 							style={{
 								padding: "6px 10px",
 								borderRadius: 6,
-								border: "1px solid rgba(15,23,42,0.12)",
-								background: "#ffffff",
+								border: `1px solid ${colors.line}`,
+								background: colors.chrome,
+								color: colors.textPrimary,
 								cursor: "pointer",
 								fontSize: 12
 							}}
