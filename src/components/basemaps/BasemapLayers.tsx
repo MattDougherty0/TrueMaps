@@ -68,7 +68,7 @@ export default function BasemapLayers() {
 						const layer = new TileLayer({
 							source,
 							zIndex: 1,
-							opacity: 0.55
+							opacity: 0.32
 						});
 						layer.set("basemapKey", "hillshade");
 						return layer;

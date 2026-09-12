@@ -236,7 +236,11 @@ export default function TrailLayer() {
 			if (visible) lazy.loadIfVisible();
 		};
 		const refreshTrackStyles = () => {
-			// Style function already reads trackVisibility; force OL to re-evaluate it
+			// 2D: layer.changed() re-runs the style function.
+			// 3D: ol-cesium VectorSynchronizer only rebuilds primitives on source
+			// 'changefeature' (or layer change:visible). layer.changed() alone
+			// leaves existing Cesium primitives on the globe.
+			sourceRef.current.getFeatures().forEach((feat) => feat.changed());
 			layer.changed();
 		};
 		updateVisibility();

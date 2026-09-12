@@ -15,7 +15,6 @@ type VisibilityState = {
 };
 
 const terrainLayers: LayerId[] = [
-	"property_boundary",
 	"streams",
 	"cliffs",
 	"ravines",

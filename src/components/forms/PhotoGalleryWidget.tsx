@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { WidgetProps } from "@rjsf/utils";
 import useAppStore from "../../state/store";
+import { useMediaStore } from "../../state/media";
 import { colors } from "../../lib/theme";
+import { findCatalogMatch } from "../../lib/media/duplicates";
 
 const containerStyle: React.CSSProperties = {
 	display: "flex",
@@ -78,6 +80,7 @@ const toFileUrl = (absolutePath: string) => {
 const PhotoGalleryWidget = (props: WidgetProps) => {
 	const { value, onChange, disabled, readonly } = props;
 	const { projectPath } = useAppStore();
+	const catalogFiles = useMediaStore((s) => s.files);
 	const photos = useMemo(() => normalizeToArray(value), [value]);
 	const [previews, setPreviews] = useState<Record<string, string>>({});
 
@@ -122,12 +125,24 @@ const PhotoGalleryWidget = (props: WidgetProps) => {
 		]);
 		if (!filePaths || filePaths.length === 0) return;
 		const rels: string[] = [];
+		const hashed =
+			typeof window.api.hashExternalFiles === "function"
+				? await window.api.hashExternalFiles(filePaths)
+				: [];
+		const hashByPath = new Map(hashed.map((item) => [item.path, item.sha256]));
 		for (const filePath of filePaths) {
+			const hash = hashByPath.get(filePath);
+			const existing = hash ? findCatalogMatch(catalogFiles, hash) : undefined;
+			if (existing) {
+				const rel = `media/${existing.path}`;
+				if (!photos.includes(rel) && !rels.includes(rel)) rels.push(rel);
+				continue;
+			}
 			const rel = await window.api.copyToMedia(projectPath, filePath);
 			rels.push(rel);
 		}
 		onChange([...photos, ...rels]);
-	}, [photos, onChange, projectPath]);
+	}, [photos, onChange, projectPath, catalogFiles]);
 
 	const removePhoto = useCallback(
 		(rel: string) => {
