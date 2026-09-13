@@ -23,9 +23,13 @@ import {
 	classificationLabels,
 	describeMediaDuplicate,
 	findCatalogMatch,
+	findCatalogMatchForFingerprint,
 	findDuplicatePeers,
+	findExistingForMatch,
 	warningsFromMatches,
-	ensureMediaHashes,
+	ensureMediaFingerprints,
+	reconcileDuplicateCopies,
+	restoreBlankKeepers,
 	type DuplicateWarning
 } from "../../lib/media/duplicates";
 import DuplicateWarningList from "./DuplicateWarningList";
@@ -564,6 +568,27 @@ export default function TrailCameraMediaManager({
 				} else {
 					setCameraBrowse({ level: "home" });
 				}
+				const catalog = useMediaStore.getState().files;
+				if (!cancelled && projectPath && catalog.length) {
+					let dirty = false;
+					await ensureMediaFingerprints(projectPath, catalog, (updates) => {
+						if (updates.length) dirty = true;
+						updateFiles(updates);
+					});
+					if (cancelled) return;
+					const duplicateFixes = reconcileDuplicateCopies(useMediaStore.getState().files);
+					if (duplicateFixes.length) {
+						updateFiles(duplicateFixes);
+						dirty = true;
+						const restoredCount = duplicateFixes.filter((item) => item.changes.reviewStatus === "pending").length;
+						if (restoredCount) {
+							setMessage(
+								`Kept one copy of each duplicate. Put ${restoredCount} blank duplicate${restoredCount === 1 ? "" : "s"} back in Needs review; extra copies stay in Trash.`
+							);
+						}
+					}
+					if (dirty) await saveToProject(projectPath);
+				}
 			} catch (error) {
 				console.error("Failed to load trail camera sites", error);
 				if (!cancelled) setMessage("Could not load trail camera sites.");
@@ -728,6 +753,18 @@ export default function TrailCameraMediaManager({
 		}
 	};
 
+	const applyDuplicateKeepers = (keepers: Array<MediaFile | undefined>): MediaFile[] => {
+		const restores = restoreBlankKeepers(keepers.filter((file): file is MediaFile => Boolean(file)));
+		if (restores.length) updateFiles(restores);
+		const recon = reconcileDuplicateCopies(useMediaStore.getState().files);
+		if (recon.length) updateFiles(recon);
+		const catalog = useMediaStore.getState().files;
+		return restores.flatMap((update) => {
+			const file = catalog.find((item) => item.id === update.id);
+			return file && fileNeedsReview(file) ? [file] : [];
+		});
+	};
+
 	const snapshotCurrent = (): ReviewUndo | null => {
 		const id = reviewIdsRef.current[reviewIndexRef.current];
 		if (!id) return null;
@@ -767,6 +804,18 @@ export default function TrailCameraMediaManager({
 		setReviewIndex(nextIndex);
 		setSdDeleteStats({ deleted: 0, missing: 0, failed: 0 });
 		setView("review");
+	};
+
+	const openDuplicateCopy = (fileId: string) => {
+		const file = useMediaStore.getState().files.find((item) => item.id === fileId);
+		if (!file || file.trashedAt) return;
+		const existingIndex = reviewIdsRef.current.indexOf(fileId);
+		if (view === "review" && existingIndex >= 0) {
+			reviewIndexRef.current = existingIndex;
+			setReviewIndex(existingIndex);
+			return;
+		}
+		startReview([file], file.id);
 	};
 
 	const leaveReview = () => {
@@ -942,7 +991,7 @@ export default function TrailCameraMediaManager({
 		setDuplicateReport([]);
 		setMessage("Indexing existing media for duplicate detection…");
 		try {
-			const knownHashes = await ensureMediaHashes(projectPath, files, updateFiles);
+			const known = await ensureMediaFingerprints(projectPath, files, updateFiles);
 			if (files.some((file) => !file.sha256 && !file.trashedAt)) {
 				await persist();
 			}
@@ -951,7 +1000,7 @@ export default function TrailCameraMediaManager({
 				projectPath,
 				sourceFolder,
 				targetFolder,
-				knownHashes
+				known
 			);
 			const now = new Date().toISOString();
 			const importedFiles: MediaFile[] = result.files.map((file) => ({
@@ -960,6 +1009,15 @@ export default function TrailCameraMediaManager({
 				path: file.path,
 				type: file.type,
 				sha256: file.sha256,
+				storedSha256: file.storedSha256,
+				payloadSha256: file.payloadSha256,
+				originalName: file.originalName,
+				captureTime: file.captureTime,
+				captureSubsec: file.captureSubsec,
+				cameraMake: file.cameraMake,
+				cameraModel: file.cameraModel,
+				width: file.width,
+				height: file.height,
 				propertyId: selectedSite.propertyId || undefined,
 				areaName: importArea,
 				cameraSiteId: selectedSite.id,
@@ -986,19 +1044,24 @@ export default function TrailCameraMediaManager({
 				failedFiles: result.failedFiles
 			});
 			const catalog = useMediaStore.getState().files;
+			const restored = applyDuplicateKeepers(
+				(result.duplicateMatches || []).map((match) => findExistingForMatch(catalog, match))
+			);
 			const warnings = warningsFromMatches(
 				result.duplicateMatches || [],
-				catalog,
+				useMediaStore.getState().files,
 				sites,
 				propertyNames
 			);
 			setDuplicateReport(warnings);
 			await persist();
 			setMessage(
-				`Imported ${importedFiles.length} file(s). Skipped ${result.skippedDuplicates} duplicate(s)` +
+				`Imported ${importedFiles.length} file(s). Skipped ${result.skippedDuplicates} extra cop${result.skippedDuplicates === 1 ? "y" : "ies"}` +
+					(restored.length ? `; put ${restored.length} blank duplicate${restored.length === 1 ? "" : "s"} back in Needs review` : "") +
 					(result.failedFiles.length ? `; ${result.failedFiles.length} failed.` : ".")
 			);
-			if (importedFiles.length) startReview(importedFiles);
+			if (importedFiles.length) startReview([...importedFiles, ...restored]);
+			else if (restored.length) startReview(restored);
 		} catch (error) {
 			console.error("Trail camera import failed", error);
 			setMessage("Import failed. The source files were not changed.");
@@ -1031,16 +1094,16 @@ export default function TrailCameraMediaManager({
 		setDuplicateReport([]);
 		setMessage("Checking for duplicates…");
 		try {
-			await ensureMediaHashes(projectPath, files, updateFiles);
+			const known = await ensureMediaFingerprints(projectPath, files, updateFiles);
 			const catalog = useMediaStore.getState().files;
-			const hashed =
-				typeof window.api.hashExternalFiles === "function"
-					? await window.api.hashExternalFiles(selectedFiles)
+			const inspected =
+				typeof window.api.inspectExternalFiles === "function"
+					? await window.api.inspectExternalFiles(selectedFiles)
 					: [];
-			const hashByPath = new Map(hashed.map((item) => [item.path, item.sha256]));
-			const seen = new Set(catalog.map((file) => file.sha256).filter((hash): hash is string => Boolean(hash)));
+			const fingerprintByPath = new Map(inspected.map((item) => [item.path, item]));
+			const seenHashes = new Set(known.hashes);
 			const importedFiles: MediaFile[] = [];
-			const dupes: DuplicateWarning[] = [];
+			const skipped: Array<{ existing?: MediaFile; sourceName: string }> = [];
 			const failed: string[] = [];
 			const now = new Date().toISOString();
 
@@ -1050,37 +1113,60 @@ export default function TrailCameraMediaManager({
 				const isImage = /\.(jpg|jpeg|png|gif|webp|heic|heif)$/i.test(originalFileName);
 				if (!isVideo && !isImage) continue;
 				try {
-					const hash = hashByPath.get(absPath);
-					if (hash) {
-						const existing = findCatalogMatch(catalog, hash);
-						if (existing || seen.has(hash)) {
-							if (existing) {
-								dupes.push(describeMediaDuplicate(existing, originalFileName, sites, propertyNames));
-							}
-							continue;
-						}
+					const fingerprint = fingerprintByPath.get(absPath);
+					const existing = fingerprint
+						? findCatalogMatchForFingerprint(catalog, fingerprint, known)
+						: undefined;
+					const hashHit = fingerprint?.sha256 && seenHashes.has(fingerprint.sha256);
+					if (existing || hashHit) {
+						skipped.push({
+							existing: existing || (fingerprint?.sha256 ? findCatalogMatch(catalog, fingerprint.sha256) : undefined),
+							sourceName: originalFileName
+						});
+						continue;
 					}
 					const copiedRelPath = await window.api.copyToMedia(projectPath, absPath, targetFolder);
 					const pathWithoutMedia = copiedRelPath.startsWith("media/")
 						? copiedRelPath.slice(6)
 						: copiedRelPath;
+					const stored =
+						typeof window.api.inspectMediaFiles === "function"
+							? (await window.api.inspectMediaFiles(projectPath, [pathWithoutMedia]))[0]
+							: undefined;
+					if (stored?.sha256 && seenHashes.has(stored.sha256)) {
+						const match = findCatalogMatch(catalog, stored.sha256);
+						skipped.push({ existing: match, sourceName: originalFileName });
+						continue;
+					}
 					const mediaFile: MediaFile = {
 						id: createId("file"),
 						name: pathWithoutMedia.split("/").pop() || originalFileName,
 						path: pathWithoutMedia,
 						type: isVideo ? "video" : "image",
-						sha256: hash,
+						sha256: fingerprint?.sha256 || stored?.sha256,
+						storedSha256: stored?.sha256 || fingerprint?.sha256,
+						payloadSha256: fingerprint?.payloadSha256 || stored?.payloadSha256,
+						originalName: fingerprint?.originalName || originalFileName,
+						captureTime: fingerprint?.captureTime || stored?.captureTime,
+						captureSubsec: fingerprint?.captureSubsec || stored?.captureSubsec,
+						cameraMake: fingerprint?.cameraMake || stored?.cameraMake,
+						cameraModel: fingerprint?.cameraModel || stored?.cameraModel,
+						width: fingerprint?.width || stored?.width,
+						height: fingerprint?.height || stored?.height,
 						propertyId: selectedSite?.propertyId || undefined,
 						areaName: selectedSite ? importArea : undefined,
 						cameraSiteId: selectedSite?.id,
 						reviewStatus: "pending",
 						knownDeerIds: [],
 						sourcePath: absPath,
+						capturedAt: fingerprint?.captureTime || stored?.captureTime,
 						createdAt: now,
 						updatedAt: now
 					};
 					importedFiles.push(mediaFile);
-					if (hash) seen.add(hash);
+					for (const hash of [mediaFile.sha256, mediaFile.storedSha256, mediaFile.payloadSha256]) {
+						if (hash) seenHashes.add(hash);
+					}
 				} catch (error) {
 					console.error("[upload] Failed to import", absPath, error);
 					failed.push(originalFileName);
@@ -1088,14 +1174,24 @@ export default function TrailCameraMediaManager({
 			}
 
 			if (importedFiles.length) addFiles(importedFiles);
+			const restored = applyDuplicateKeepers(skipped.map((item) => item.existing));
+			const latest = useMediaStore.getState().files;
+			const dupes: DuplicateWarning[] = skipped.flatMap((item) => {
+				const existing = item.existing
+					? latest.find((file) => file.id === item.existing?.id) || item.existing
+					: undefined;
+				return existing ? [describeMediaDuplicate(existing, item.sourceName, sites, propertyNames)] : [];
+			});
 			setDuplicateReport(dupes);
 			await persist();
 			setMessage(
 				`Uploaded ${importedFiles.length} file(s)` +
-					(dupes.length ? `. Skipped ${dupes.length} duplicate(s)` : "") +
+					(dupes.length ? `. Skipped ${dupes.length} extra cop${dupes.length === 1 ? "y" : "ies"}` : "") +
+					(restored.length ? `; put ${restored.length} blank duplicate${restored.length === 1 ? "" : "s"} back in Needs review` : "") +
 					(failed.length ? `; ${failed.length} failed` : ".")
 			);
-			if (importedFiles.length) startReview(importedFiles);
+			if (importedFiles.length) startReview([...importedFiles, ...restored]);
+			else if (restored.length) startReview(restored);
 		} catch (error) {
 			console.error("Upload failed", error);
 			setMessage("Upload failed. The source files were not changed.");
@@ -1276,7 +1372,14 @@ export default function TrailCameraMediaManager({
 
 	const restoreFile = async (file: MediaFile) => {
 		if (!projectPath) return;
-		updateFile(file.id, { trashedAt: undefined });
+		if (file.duplicateOfId) {
+			const keeper = useMediaStore.getState().files.find((item) => item.id === file.duplicateOfId);
+			if (keeper && !keeper.trashedAt) {
+				setMessage("This is an extra copy. TrueMap already kept the other file in your library.");
+				return;
+			}
+		}
+		updateFile(file.id, { trashedAt: undefined, duplicateOfId: undefined });
 		await persist();
 	};
 
@@ -1530,7 +1633,7 @@ export default function TrailCameraMediaManager({
 				) : null}
 				{view !== "review" && duplicateReport.length ? (
 					<div style={{ padding: `${spacing.md} ${spacing.xxl}` }}>
-						<DuplicateWarningList items={duplicateReport} />
+						<DuplicateWarningList items={duplicateReport} onOpen={openDuplicateCopy} />
 					</div>
 				) : null}
 
@@ -1955,20 +2058,32 @@ export default function TrailCameraMediaManager({
 							<div style={{ color: colors.textMuted, fontSize: typography.fontSize.sm }}>
 								Blank and misfire files are hidden from normal views but kept safely on disk. Restore keeps their camera and review metadata. Restoring does not put a deleted original back on the SD card.
 							</div>
-							{trashedFiles.map((file) => (
+							{trashedFiles.map((file) => {
+								const keptCopy = file.duplicateOfId
+									? files.find((item) => item.id === file.duplicateOfId && !item.trashedAt)
+									: undefined;
+								return (
 								<div key={file.id} style={{ display: "flex", alignItems: "center", gap: spacing.lg, padding: spacing.md, border: `1px solid ${colors.border}`, borderRadius: borderRadius.lg }}>
 									<div style={{ width: 100, height: 70, overflow: "hidden", borderRadius: borderRadius.md }}><MediaPreview file={file} /></div>
 									<div style={{ flex: 1 }}>
 										<div style={{ fontWeight: typography.fontWeight.semibold }}>{file.name}</div>
 										<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>
+											{file.duplicateOfId ? "Extra copy · " : ""}
+											{file.classification ? classificationLabels[file.classification] : "Unclassified"}
+											{" · "}
 											{siteNames.get(file.cameraSiteId || "") || "Unknown camera"}
 											{" · "}
 											{formatCaptureDateTime(file.capturedAt || file.trashedAt)}
 										</div>
 									</div>
-									<button onClick={() => void restoreFile(file)} style={buttonStyle}>Restore</button>
+									{keptCopy ? (
+										<span style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>Kept copy is in the library</span>
+									) : (
+										<button onClick={() => void restoreFile(file)} style={buttonStyle}>Restore</button>
+									)}
 								</div>
-							))}
+								);
+							})}
 							{!trashedFiles.length ? <div>Trash is empty.</div> : null}
 						</div>
 					) : null}
@@ -2021,14 +2136,16 @@ export default function TrailCameraMediaManager({
 									<DuplicateWarningList
 										compact
 										items={currentFileDuplicates}
-										title="Same file already exists"
+										title="Extra copy already in TrueMap"
+										onOpen={openDuplicateCopy}
 									/>
 								) : null}
 								{duplicateReport.length ? (
 									<DuplicateWarningList
 										compact
 										items={duplicateReport}
-										title={`${duplicateReport.length} file${duplicateReport.length === 1 ? "" : "s"} from this import were already in TrueMap`}
+										title={`${duplicateReport.length} extra cop${duplicateReport.length === 1 ? "y" : "ies"} from this import were skipped`}
+										onOpen={openDuplicateCopy}
 									/>
 								) : null}
 

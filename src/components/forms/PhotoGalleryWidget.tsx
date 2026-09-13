@@ -3,7 +3,7 @@ import type { WidgetProps } from "@rjsf/utils";
 import useAppStore from "../../state/store";
 import { useMediaStore } from "../../state/media";
 import { colors } from "../../lib/theme";
-import { findCatalogMatch } from "../../lib/media/duplicates";
+import { findCatalogMatch, findCatalogMatchForFingerprint } from "../../lib/media/duplicates";
 
 const containerStyle: React.CSSProperties = {
 	display: "flex",
@@ -125,14 +125,23 @@ const PhotoGalleryWidget = (props: WidgetProps) => {
 		]);
 		if (!filePaths || filePaths.length === 0) return;
 		const rels: string[] = [];
+		const inspected =
+			typeof window.api.inspectExternalFiles === "function"
+				? await window.api.inspectExternalFiles(filePaths)
+				: [];
+		const fingerprintByPath = new Map(inspected.map((item) => [item.path, item]));
 		const hashed =
-			typeof window.api.hashExternalFiles === "function"
+			!inspected.length && typeof window.api.hashExternalFiles === "function"
 				? await window.api.hashExternalFiles(filePaths)
 				: [];
 		const hashByPath = new Map(hashed.map((item) => [item.path, item.sha256]));
 		for (const filePath of filePaths) {
-			const hash = hashByPath.get(filePath);
-			const existing = hash ? findCatalogMatch(catalogFiles, hash) : undefined;
+			const fingerprint = fingerprintByPath.get(filePath);
+			const existing = fingerprint
+				? findCatalogMatchForFingerprint(catalogFiles, fingerprint)
+				: hashByPath.get(filePath)
+				? findCatalogMatch(catalogFiles, hashByPath.get(filePath) || "")
+				: undefined;
 			if (existing) {
 				const rel = `media/${existing.path}`;
 				if (!photos.includes(rel) && !rels.includes(rel)) rels.push(rel);

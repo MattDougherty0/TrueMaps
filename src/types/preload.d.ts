@@ -21,6 +21,37 @@ declare global {
 			resolveMediaPath: (baseDir: string, relativePath: string) => Promise<string>;
 			hashMediaFiles: (baseDir: string, mediaPaths: string[]) => Promise<Array<{ path: string; sha256: string }>>;
 			hashExternalFiles: (absolutePaths: string[]) => Promise<Array<{ path: string; sha256: string }>>;
+			inspectExternalFiles?: (
+				absolutePaths: string[]
+			) => Promise<Array<{
+				path: string;
+				type: "image" | "video";
+				sha256?: string;
+				payloadSha256?: string;
+				originalName?: string;
+				captureTime?: string;
+				captureSubsec?: string;
+				cameraMake?: string;
+				cameraModel?: string;
+				width?: number;
+				height?: number;
+			}>>;
+			inspectMediaFiles?: (
+				baseDir: string,
+				mediaPaths: string[]
+			) => Promise<Array<{
+				path: string;
+				type: "image" | "video";
+				sha256?: string;
+				payloadSha256?: string;
+				originalName?: string;
+				captureTime?: string;
+				captureSubsec?: string;
+				cameraMake?: string;
+				cameraModel?: string;
+				width?: number;
+				height?: number;
+			}>>;
 			deleteFile: (absolutePath: string) => Promise<boolean>;
 			deleteTrailCameraSource: (payload: {
 				projectPath: string;
@@ -38,13 +69,22 @@ declare global {
 				baseDir: string,
 				sourceDirAbsolutePath: string,
 				targetFolderPath: string,
-				knownHashes: string[]
+				known?: { hashes: string[]; identityKeys: string[] } | string[]
 			) => Promise<{
 				files: Array<{
 					name: string;
 					path: string;
 					type: "image" | "video";
 					sha256: string;
+					storedSha256?: string;
+					payloadSha256?: string;
+					originalName?: string;
+					captureTime?: string;
+					captureSubsec?: string;
+					cameraMake?: string;
+					cameraModel?: string;
+					width?: number;
+					height?: number;
 					size: number;
 					capturedAt: string;
 					sourcePath: string;
@@ -57,6 +97,7 @@ declare global {
 					sha256: string;
 					sourceName: string;
 					sourceRelativePath: string;
+					identityKeys?: string[];
 				}>;
 			}>;
 			onTrailCameraImportProgress: (

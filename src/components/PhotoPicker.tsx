@@ -1,6 +1,6 @@
 import useAppStore from "../state/store";
 import { useMediaStore } from "../state/media";
-import { findCatalogMatch } from "../lib/media/duplicates";
+import { findCatalogMatch, findCatalogMatchForFingerprint } from "../lib/media/duplicates";
 
 export default function PhotoPicker({
 	onPicked
@@ -15,7 +15,16 @@ export default function PhotoPicker({
 			{ name: "Images", extensions: ["jpg", "jpeg", "png", "webp", "gif", "heic", "heif"] }
 		]);
 		if (!filePath) return;
-		if (typeof window.api.hashExternalFiles === "function") {
+		if (typeof window.api.inspectExternalFiles === "function") {
+			const inspected = await window.api.inspectExternalFiles([filePath]);
+			const existing = inspected[0]
+				? findCatalogMatchForFingerprint(files, inspected[0])
+				: undefined;
+			if (existing) {
+				onPicked(`media/${existing.path}`);
+				return;
+			}
+		} else if (typeof window.api.hashExternalFiles === "function") {
 			const hashed = await window.api.hashExternalFiles([filePath]);
 			const hash = hashed[0]?.sha256;
 			const existing = hash ? findCatalogMatch(files, hash) : undefined;

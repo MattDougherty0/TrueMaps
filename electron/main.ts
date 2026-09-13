@@ -6,7 +6,13 @@ import * as fs from "fs/promises";
 import * as fssync from "fs";
 import { createReadStream } from "fs";
 import { Readable } from "stream";
-import { createHash } from "crypto";
+import {
+	fingerprintMatchesKnown,
+	inspectMediaFile,
+	sha256File,
+	type MediaFingerprint
+} from "./mediaIdentity";
+import { hashesFor, identityKeysFor } from "./fingerprint";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument = require("pdfkit");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -164,6 +170,19 @@ function parseBytesRange(header: string | undefined, size: number): { start: num
 	return { start, end };
 }
 
+const parseDuplicateKnown = (
+	raw: unknown
+): { hashes: Set<string>; keys: Set<string> } => {
+	if (Array.isArray(raw)) {
+		return { hashes: new Set(raw.filter((hash): hash is string => typeof hash === "string" && Boolean(hash))), keys: new Set() };
+	}
+	const rec = raw && typeof raw === "object" ? (raw as { hashes?: string[]; identityKeys?: string[] }) : {};
+	return {
+		hashes: new Set((rec.hashes || []).filter(Boolean)),
+		keys: new Set((rec.identityKeys || []).filter(Boolean))
+	};
+};
+
 async function resolvedPathInside(parent: string, candidate: string): Promise<string | null> {
 	try {
 		const parentReal = await fs.realpath(parent);
@@ -172,16 +191,6 @@ async function resolvedPathInside(parent: string, candidate: string): Promise<st
 	} catch {
 		return null;
 	}
-}
-
-async function sha256File(filePath: string): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const hash = createHash("sha256");
-		const stream = createReadStream(filePath);
-		stream.on("error", reject);
-		stream.on("data", (chunk) => hash.update(chunk));
-		stream.on("end", () => resolve(hash.digest("hex")));
-	});
 }
 
 async function availableDestination(targetDir: string, fileName: string): Promise<string> {
@@ -276,6 +285,8 @@ async function convertVideoToMP4(inputPath: string, outputPath: string): Promise
 		"23",
 		"-c:a",
 		"aac",
+		"-map_metadata",
+		"0",
 		"-movflags",
 		"+faststart",
 		"-pix_fmt",
@@ -621,6 +632,53 @@ app.whenReady().then(() => {
 		}
 	);
 
+	ipcMain.handle(
+		"media:inspectExternalFiles",
+		async (_event, absolutePaths: string[]): Promise<Array<{ path: string } & MediaFingerprint>> => {
+			const ffmpegBinary = ensureFfmpegConfigured();
+			const results: Array<{ path: string } & MediaFingerprint> = [];
+			for (const absolutePath of Array.isArray(absolutePaths) ? absolutePaths : []) {
+				try {
+					await assertReadableMediaFile(absolutePath);
+					const fingerprint = await inspectMediaFile(absolutePath, ffmpegBinary);
+					if (fingerprint) results.push({ path: absolutePath, ...fingerprint });
+				} catch (error) {
+					console.warn("[media:inspectExternalFiles] Failed to inspect", absolutePath, error);
+				}
+			}
+			return results;
+		}
+	);
+
+	ipcMain.handle(
+		"media:inspectMediaFiles",
+		async (
+			_event,
+			baseDir: string,
+			mediaPaths: string[]
+		): Promise<Array<{ path: string } & MediaFingerprint>> => {
+			const mediaDir = path.resolve(baseDir, "media");
+			const realMediaDir = await fs.realpath(mediaDir);
+			const ffmpegBinary = ensureFfmpegConfigured();
+			const results: Array<{ path: string } & MediaFingerprint> = [];
+			for (const mediaPath of Array.isArray(mediaPaths) ? mediaPaths : []) {
+				try {
+					const target = resolveInsideBase(mediaDir, mediaPath);
+					const realTarget = await fs.realpath(target);
+					const relative = path.relative(realMediaDir, realTarget);
+					if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
+					const stat = await fs.lstat(realTarget);
+					if (!stat.isFile()) continue;
+					const fingerprint = await inspectMediaFile(realTarget, ffmpegBinary);
+					if (fingerprint) results.push({ path: mediaPath, ...fingerprint });
+				} catch {
+					// Missing legacy catalog entries are ignored rather than blocking an import.
+				}
+			}
+			return results;
+		}
+	);
+
 	ipcMain.handle("media:deleteFile", async (_event, absolutePath: string) => {
 		try {
 			await fs.unlink(absolutePath);
@@ -772,13 +830,22 @@ app.whenReady().then(() => {
 			baseDir: string,
 			sourceDirAbsolutePath: string,
 			targetFolderPath: string,
-			knownHashes: string[]
+			knownRaw?: unknown
 		): Promise<{
 			files: Array<{
 				name: string;
 				path: string;
 				type: "image" | "video";
 				sha256: string;
+				storedSha256?: string;
+				payloadSha256?: string;
+				originalName?: string;
+				captureTime?: string;
+				captureSubsec?: string;
+				cameraMake?: string;
+				cameraModel?: string;
+				width?: number;
+				height?: number;
 				size: number;
 				capturedAt: string;
 				sourcePath: string;
@@ -791,6 +858,7 @@ app.whenReady().then(() => {
 				sha256: string;
 				sourceName: string;
 				sourceRelativePath: string;
+				identityKeys?: string[];
 			}>;
 		}> => {
 			const importKey = path.resolve(baseDir);
@@ -802,11 +870,13 @@ app.whenReady().then(() => {
 			const mediaDir = path.resolve(baseDir, "media");
 			const sourceDir = path.resolve(sourceDirAbsolutePath);
 			const targetDir = await ensureDirectoryInsideBase(mediaDir, targetFolderPath);
+			const ffmpegBinary = ensureFfmpegConfigured();
 
 			const imageExts = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"]);
 			const videoExts = new Set([".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"]);
-			const known = new Set(Array.isArray(knownHashes) ? knownHashes.filter(Boolean) : []);
-			const seenThisImport = new Set<string>();
+			const known = parseDuplicateKnown(knownRaw);
+			const seenHashes = new Set<string>();
+			const seenKeys = new Set<string>();
 			const sourceFiles: string[] = [];
 			let skippedUnsupported = 0;
 
@@ -843,6 +913,15 @@ app.whenReady().then(() => {
 				path: string;
 				type: "image" | "video";
 				sha256: string;
+				storedSha256?: string;
+				payloadSha256?: string;
+				originalName?: string;
+				captureTime?: string;
+				captureSubsec?: string;
+				cameraMake?: string;
+				cameraModel?: string;
+				width?: number;
+				height?: number;
 				size: number;
 				capturedAt: string;
 				sourcePath: string;
@@ -853,21 +932,43 @@ app.whenReady().then(() => {
 				sha256: string;
 				sourceName: string;
 				sourceRelativePath: string;
+				identityKeys?: string[];
 			}> = [];
 			let skippedDuplicates = 0;
+
+			const markSeen = (fingerprint: MediaFingerprint, storedSha256?: string) => {
+				for (const hash of [...hashesFor(fingerprint), storedSha256]) {
+					if (hash) seenHashes.add(hash);
+				}
+				for (const key of identityKeysFor(fingerprint)) seenKeys.add(key);
+			};
+
+			const isKnown = (fingerprint: MediaFingerprint, extraHash?: string) => {
+				if (extraHash && (known.hashes.has(extraHash) || seenHashes.has(extraHash))) return true;
+				if (fingerprintMatchesKnown(fingerprint, new Set([...known.hashes, ...seenHashes]), new Set([...known.keys, ...seenKeys]))) {
+					return true;
+				}
+				return false;
+			};
 
 			let processed = 0;
 			for (const sourcePath of sourceFiles) {
 				try {
 					await assertReadableMediaFile(sourcePath);
-					const hash = await sha256File(sourcePath);
 					const sourceRelativePath = path.relative(sourceDir, sourcePath).split(path.sep).join("/");
-					if (known.has(hash) || seenThisImport.has(hash)) {
+					const fingerprint = await inspectMediaFile(sourcePath, ffmpegBinary);
+					if (!fingerprint?.sha256) {
+						failedFiles.push(sourceRelativePath);
+						processed += 1;
+						continue;
+					}
+					if (isKnown(fingerprint)) {
 						skippedDuplicates += 1;
 						duplicateMatches.push({
-							sha256: hash,
+							sha256: fingerprint.sha256,
 							sourceName: path.basename(sourcePath),
-							sourceRelativePath
+							sourceRelativePath,
+							identityKeys: identityKeysFor(fingerprint)
 						});
 						processed += 1;
 						event.sender.send("media:importTrailCameraProgress", {
@@ -878,7 +979,6 @@ app.whenReady().then(() => {
 						});
 						continue;
 					}
-					seenThisImport.add(hash);
 
 					const stat = await fs.stat(sourcePath);
 					const parsed = path.parse(sourcePath);
@@ -893,15 +993,48 @@ app.whenReady().then(() => {
 					const destination = isAvi
 						? await convertAviOrCopy(sourcePath, targetDir, parsed.base)
 						: await importMediaFile(sourcePath, targetDir);
+					const storedSha256 = await sha256File(destination);
+					if (isKnown(fingerprint, storedSha256)) {
+						try {
+							await fs.unlink(destination);
+						} catch {
+							// already skipped as a duplicate of a stored file
+						}
+						skippedDuplicates += 1;
+						duplicateMatches.push({
+							sha256: storedSha256,
+							sourceName: path.basename(sourcePath),
+							sourceRelativePath,
+							identityKeys: identityKeysFor(fingerprint)
+						});
+						processed += 1;
+						event.sender.send("media:importTrailCameraProgress", {
+							processed,
+							total: sourceFiles.length,
+							fileName: path.basename(sourcePath),
+							stage: "duplicate"
+						});
+						continue;
+					}
 
+					markSeen(fingerprint, storedSha256);
 					const relativePath = path.relative(mediaDir, destination).split(path.sep).join("/");
 					imported.push({
 						name: path.basename(destination),
 						path: relativePath,
 						type: videoExts.has(parsed.ext.toLowerCase()) ? "video" : "image",
-						sha256: hash,
+						sha256: fingerprint.sha256,
+						storedSha256,
+						payloadSha256: fingerprint.payloadSha256,
+						originalName: fingerprint.originalName,
+						captureTime: fingerprint.captureTime,
+						captureSubsec: fingerprint.captureSubsec,
+						cameraMake: fingerprint.cameraMake,
+						cameraModel: fingerprint.cameraModel,
+						width: fingerprint.width,
+						height: fingerprint.height,
 						size: stat.size,
-						capturedAt: stat.mtime.toISOString(),
+						capturedAt: fingerprint.captureTime || stat.mtime.toISOString(),
 						sourcePath,
 						sourceRelativePath
 					});

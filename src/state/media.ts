@@ -22,6 +22,15 @@ export type MediaFile = {
 	type: "image" | "video";
 	notes?: string;
 	sha256?: string;
+	storedSha256?: string;
+	payloadSha256?: string;
+	originalName?: string;
+	captureTime?: string;
+	captureSubsec?: string;
+	cameraMake?: string;
+	cameraModel?: string;
+	width?: number;
+	height?: number;
 	propertyId?: string;
 	areaName?: string;
 	cameraSiteId?: string;
@@ -33,6 +42,7 @@ export type MediaFile = {
 	deerCount?: number;
 	travelDirection?: string;
 	trashedAt?: string;
+	duplicateOfId?: string;
 	originalPath?: string;
 	sourcePath?: string;
 	sourceRelativePath?: string;
