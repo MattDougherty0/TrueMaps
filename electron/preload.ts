@@ -30,6 +30,9 @@ contextBridge.exposeInMainWorld("api", {
 		ipcRenderer.invoke("media:hashFiles", baseDir, mediaPaths),
 	hashExternalFiles: (absolutePaths: string[]): Promise<Array<{ path: string; sha256: string }>> =>
 		ipcRenderer.invoke("media:hashExternalFiles", absolutePaths),
+	inspectExternalFiles: (absolutePaths: string[]) => ipcRenderer.invoke("media:inspectExternalFiles", absolutePaths),
+	inspectMediaFiles: (baseDir: string, mediaPaths: string[]) =>
+		ipcRenderer.invoke("media:inspectMediaFiles", baseDir, mediaPaths),
 	deleteFile: (absolutePath: string): Promise<boolean> =>
 		ipcRenderer.invoke("media:deleteFile", absolutePath),
 	deleteTrailCameraSource: (
@@ -53,13 +56,22 @@ contextBridge.exposeInMainWorld("api", {
 		baseDir: string,
 		sourceDirAbsolutePath: string,
 		targetFolderPath: string,
-		knownHashes: string[]
+		known?: { hashes: string[]; identityKeys: string[] } | string[]
 	): Promise<{
 		files: Array<{
 			name: string;
 			path: string;
 			type: "image" | "video";
 			sha256: string;
+			storedSha256?: string;
+			payloadSha256?: string;
+			originalName?: string;
+			captureTime?: string;
+			captureSubsec?: string;
+			cameraMake?: string;
+			cameraModel?: string;
+			width?: number;
+			height?: number;
 			size: number;
 			capturedAt: string;
 			sourcePath: string;
@@ -72,8 +84,9 @@ contextBridge.exposeInMainWorld("api", {
 			sha256: string;
 			sourceName: string;
 			sourceRelativePath: string;
+			identityKeys?: string[];
 		}>;
-	}> => ipcRenderer.invoke("media:importTrailCamera", baseDir, sourceDirAbsolutePath, targetFolderPath, knownHashes),
+	}> => ipcRenderer.invoke("media:importTrailCamera", baseDir, sourceDirAbsolutePath, targetFolderPath, known),
 	onTrailCameraImportProgress: (
 		listener: (progress: { processed: number; total: number; fileName: string; stage: string }) => void
 	): (() => void) => {

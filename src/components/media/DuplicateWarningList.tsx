@@ -6,11 +6,13 @@ const PREVIEW_LIMIT = 8;
 export default function DuplicateWarningList({
 	items,
 	title,
-	compact
+	compact,
+	onOpen
 }: {
 	items: DuplicateWarning[];
 	title?: string;
 	compact?: boolean;
+	onOpen?: (fileId: string) => void;
 }) {
 	if (!items.length) return null;
 	const shown = items.slice(0, PREVIEW_LIMIT);
@@ -30,10 +32,13 @@ export default function DuplicateWarningList({
 		>
 			<div style={{ fontSize: typography.fontSize.sm, fontWeight: typography.fontWeight.semibold }}>
 				{title ||
-					`${items.length} duplicate${items.length === 1 ? "" : "s"} already in TrueMap`}
+					`${items.length} extra cop${items.length === 1 ? "y" : "ies"} skipped — TrueMap kept one of each`}
 			</div>
 			{shown.map((item, index) => (
-				<div key={`${item.sourceName}-${item.existingName}-${index}`} style={{ fontSize: typography.fontSize.xs, color: colors.textSecondary }}>
+				<div
+					key={`${item.sourceName}-${item.existingName}-${item.fileId || index}`}
+					style={{ fontSize: typography.fontSize.xs, color: colors.textSecondary }}
+				>
 					<div>
 						<strong style={{ color: colors.textPrimary }}>{item.sourceName}</strong>
 						{item.existingName !== item.sourceName ? ` matches ${item.existingName}` : ""}
@@ -41,6 +46,25 @@ export default function DuplicateWarningList({
 					<div>
 						{item.location} · {item.review}
 					</div>
+					{item.fileId && item.openable && onOpen ? (
+						<button
+							type="button"
+							onClick={() => onOpen(item.fileId!)}
+							style={{
+								marginTop: 4,
+								border: `1px solid ${colors.primaryBorder}`,
+								background: colors.bgButton,
+								color: colors.primary,
+								borderRadius: borderRadius.md,
+								padding: "4px 8px",
+								fontSize: typography.fontSize.xs,
+								fontWeight: typography.fontWeight.semibold,
+								cursor: "pointer"
+							}}
+						>
+							Review this copy
+						</button>
+					) : null}
 				</div>
 			))}
 			{extra > 0 ? (
