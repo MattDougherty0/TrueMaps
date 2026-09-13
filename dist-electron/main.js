@@ -35,27 +35,98 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
 const electron_1 = require("electron");
+const child_process_1 = require("child_process");
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs/promises"));
 const fssync = __importStar(require("fs"));
 const fs_1 = require("fs");
+const stream_1 = require("stream");
 const crypto_1 = require("crypto");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument = require("pdfkit");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const sqlite3 = require("sqlite3");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const ffmpeg = require("fluent-ffmpeg");
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const ffmpegStatic = require("ffmpeg-static");
-// Set ffmpeg path if available
-if (ffmpegStatic) {
-    ffmpeg.setFfmpegPath(ffmpegStatic);
+// Electron patches fs to look inside asar; child_process.spawn does not.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const originalFs = process.versions.electron ? require("original-fs") : fssync;
+let ffmpegBinaryPath;
+function pathOutsideAsar(filePath) {
+    const packed = `${path.sep}app.asar${path.sep}`;
+    const unpacked = `${path.sep}app.asar.unpacked${path.sep}`;
+    if (filePath.includes(unpacked))
+        return filePath;
+    if (filePath.includes(packed))
+        return filePath.replace(packed, unpacked);
+    return filePath;
+}
+function isSpawnableBinary(filePath) {
+    if (!filePath)
+        return false;
+    const packed = `${path.sep}app.asar${path.sep}`;
+    const unpacked = `${path.sep}app.asar.unpacked${path.sep}`;
+    if (filePath.includes(packed) && !filePath.includes(unpacked))
+        return false;
+    try {
+        return originalFs.statSync(filePath).isFile();
+    }
+    catch {
+        return false;
+    }
+}
+function resolveFfmpegBinary() {
+    const binaryName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+    const fromModule = typeof ffmpegStatic === "string" ? ffmpegStatic : "";
+    const candidates = [
+        path.join(process.resourcesPath || "", "bin", binaryName),
+        fromModule ? pathOutsideAsar(fromModule) : "",
+        fromModule
+    ].filter(Boolean);
+    const seen = new Set();
+    for (const candidate of candidates) {
+        if (seen.has(candidate))
+            continue;
+        seen.add(candidate);
+        if (isSpawnableBinary(candidate))
+            return candidate;
+    }
+    return null;
+}
+function ensureFfmpegConfigured() {
+    if (ffmpegBinaryPath !== undefined)
+        return ffmpegBinaryPath;
+    const binary = resolveFfmpegBinary();
+    if (!binary) {
+        console.warn("[video] ffmpeg binary is not spawnable; conversion will be skipped");
+        ffmpegBinaryPath = null;
+        return null;
+    }
+    try {
+        originalFs.chmodSync(binary, 0o755);
+    }
+    catch {
+        // already executable, or chmod is not permitted
+    }
+    process.env.FFMPEG_PATH = binary;
+    console.log("[video] using ffmpeg at", binary);
+    ffmpegBinaryPath = binary;
+    return binary;
 }
 // CRITICAL: Register custom protocol schemes BEFORE app is ready (must be synchronous)
 electron_1.protocol.registerSchemesAsPrivileged([
     { scheme: "mbtiles", privileges: { standard: true, secure: true } },
-    { scheme: "media", privileges: { standard: true, secure: true } }
+    {
+        scheme: "media",
+        privileges: {
+            standard: true,
+            secure: true,
+            supportFetchAPI: true,
+            stream: true,
+            corsEnabled: true,
+            bypassCSP: true
+        }
+    }
 ]);
 const isDev = !electron_1.app.isPackaged;
 const mbtilesCache = new Map();
@@ -100,6 +171,32 @@ function resolveInsideBase(baseDir, relativePath) {
 function isPathInside(parent, child) {
     const rel = path.relative(parent, child);
     return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+function parseBytesRange(header, size) {
+    if (!header || size <= 0)
+        return null;
+    const match = /^bytes=(\d*)-(\d*)$/i.exec(header.trim());
+    if (!match)
+        return null;
+    let start;
+    let end;
+    if (match[1] === "" && match[2] !== "") {
+        const suffix = Number(match[2]);
+        if (!Number.isFinite(suffix) || suffix <= 0)
+            return "unsatisfiable";
+        start = Math.max(0, size - suffix);
+        end = size - 1;
+    }
+    else {
+        start = match[1] === "" ? 0 : Number(match[1]);
+        end = match[2] === "" ? size - 1 : Number(match[2]);
+        if (!Number.isFinite(start) || !Number.isFinite(end))
+            return "unsatisfiable";
+        end = Math.min(end, size - 1);
+    }
+    if (start < 0 || start >= size || end < start)
+        return "unsatisfiable";
+    return { start, end };
 }
 async function resolvedPathInside(parent, candidate) {
     try {
@@ -156,37 +253,106 @@ async function ensureDirectoryInsideBase(baseDir, relativePath) {
     }
     return target;
 }
-async function convertVideoToMP4(inputPath, outputPath) {
+async function assertReadableMediaFile(sourceAbsolutePath) {
+    let st;
+    try {
+        st = await fs.stat(sourceAbsolutePath);
+    }
+    catch (error) {
+        const code = error.code;
+        if (code === "ENOENT") {
+            throw new Error("That file is not available. If it is in iCloud Photos, download it to this Mac first.");
+        }
+        throw error;
+    }
+    if (!st.isFile()) {
+        throw new Error("TrueMap can only import regular photo and video files.");
+    }
+    if (sourceAbsolutePath.toLowerCase().endsWith(".icloud")) {
+        throw new Error("That item is still in iCloud. Download it in Photos, then import again.");
+    }
+}
+function runFfmpeg(binary, args) {
     return new Promise((resolve, reject) => {
-        ffmpeg(inputPath)
-            .videoCodec("libx264")
-            .audioCodec("aac")
-            .outputOptions([
-            "-preset", "fast",
-            "-crf", "23",
-            "-movflags", "+faststart", // Enable fast start for web playback
-            "-pix_fmt", "yuv420p", // Ensure compatibility
-            "-profile:v", "baseline", // Maximum compatibility
-            "-level", "3.0"
-        ])
-            .on("start", (commandLine) => {
-            console.log(`[video] Converting: ${commandLine}`);
-        })
-            .on("progress", (progress) => {
-            if (progress.percent !== undefined) {
-                console.log(`[video] Conversion progress: ${Math.round(progress.percent)}%`);
-            }
-        })
-            .on("end", () => {
-            console.log(`[video] ✓ Conversion complete: ${outputPath}`);
-            resolve();
-        })
-            .on("error", (err) => {
-            console.error(`[video] Conversion error:`, err);
+        try {
+            const proc = (0, child_process_1.spawn)(binary, args, { windowsHide: true });
+            let stderr = "";
+            proc.stderr?.on("data", (chunk) => {
+                stderr += chunk.toString();
+            });
+            proc.on("error", (err) => reject(err));
+            proc.on("close", (code) => {
+                if (code === 0)
+                    resolve();
+                else
+                    reject(new Error(stderr.trim() || `ffmpeg exited with code ${code}`));
+            });
+        }
+        catch (err) {
             reject(err);
-        })
-            .save(outputPath);
+        }
     });
+}
+async function convertVideoToMP4(inputPath, outputPath) {
+    const binary = ensureFfmpegConfigured();
+    if (!binary) {
+        throw new Error("ffmpeg is not available in this installation");
+    }
+    console.log(`[video] Converting ${path.basename(inputPath)} -> ${path.basename(outputPath)}`);
+    await runFfmpeg(binary, [
+        "-y",
+        "-i",
+        inputPath,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "23",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "+faststart",
+        "-pix_fmt",
+        "yuv420p",
+        "-profile:v",
+        "baseline",
+        "-level",
+        "3.0",
+        outputPath
+    ]);
+    console.log(`[video] ✓ Conversion complete: ${outputPath}`);
+}
+async function convertAviOrCopy(sourceAbsolutePath, destDir, originalName) {
+    const parsed = path.parse(originalName);
+    const mp4Dest = await availableDestination(destDir, `${parsed.name}.mp4`);
+    try {
+        await convertVideoToMP4(sourceAbsolutePath, mp4Dest);
+        return mp4Dest;
+    }
+    catch (err) {
+        console.error("[video] Conversion failed, copying original:", err);
+        try {
+            await fs.unlink(mp4Dest);
+        }
+        catch {
+            // conversion may not have created an output file
+        }
+        const fallback = await availableDestination(destDir, originalName);
+        await fs.copyFile(sourceAbsolutePath, fallback);
+        return fallback;
+    }
+}
+async function importMediaFile(sourceAbsolutePath, destDir) {
+    await assertReadableMediaFile(sourceAbsolutePath);
+    await fs.mkdir(destDir, { recursive: true });
+    const original = path.basename(sourceAbsolutePath);
+    if (path.extname(original).toLowerCase() === ".avi") {
+        return convertAviOrCopy(sourceAbsolutePath, destDir, original);
+    }
+    const destPath = await availableDestination(destDir, original);
+    await fs.copyFile(sourceAbsolutePath, destPath);
+    return destPath;
 }
 electron_1.app.whenReady().then(() => {
     // Register custom protocols before creating window
@@ -242,101 +408,100 @@ electron_1.app.whenReady().then(() => {
         }
     });
     console.log("[media] Registering media protocol handler...");
-    electron_1.protocol.registerStreamProtocol("media", (request, callback) => {
-        console.log("[media] Handler called! URL:", request.url);
-        (async () => {
-            try {
-                if (!activeProjectDir) {
-                    console.error("[media] No active project directory");
-                    callback({ statusCode: 404 });
-                    return;
+    electron_1.protocol.handle("media", async (request) => {
+        try {
+            if (!activeProjectDir) {
+                console.error("[media] No active project directory");
+                return new Response("Not found", { status: 404 });
+            }
+            const url = new URL(request.url);
+            let pathParts = [];
+            if (url.hostname) {
+                pathParts = [url.hostname, ...url.pathname.split("/").filter(Boolean)];
+            }
+            else if (url.pathname && url.pathname !== "/") {
+                pathParts = url.pathname.split("/").filter(Boolean);
+            }
+            else {
+                console.error(`[media] No path found in URL: ${request.url}`);
+                return new Response("Bad request", { status: 400 });
+            }
+            const segments = pathParts.map((seg) => {
+                try {
+                    return decodeURIComponent(seg);
                 }
-                const url = new URL(request.url);
-                console.log(`[media] Request URL: ${request.url}`);
-                console.log(`[media] Parsed - hostname: "${url.hostname}", pathname: "${url.pathname}"`);
-                // For media:// URLs, path can be in pathname (media:///path) or hostname+pathname (media://hostname/path)
-                let pathParts = [];
-                // If hostname exists, it's the first path segment (media://leacock/path)
-                if (url.hostname) {
-                    // Path starts with hostname: media://leacock/Older%208/IMAG0156.jpg
-                    pathParts = [url.hostname, ...url.pathname.split("/").filter(Boolean)];
-                    console.log(`[media] Using hostname+pathname, parts:`, pathParts);
+                catch {
+                    return seg;
                 }
-                else if (url.pathname && url.pathname !== "/") {
-                    // Path is only in pathname: media:///Leacock/Albino/IMAG0007.jpg
-                    pathParts = url.pathname.split("/").filter(Boolean);
-                    console.log(`[media] Using pathname only, parts:`, pathParts);
-                }
-                else {
-                    console.error(`[media] No path found in URL`);
-                    callback({ statusCode: 400 });
-                    return;
-                }
-                // Decode each path segment separately (handles URL encoding like %2F, %20)
-                const segments = pathParts.map(seg => {
-                    try {
-                        return decodeURIComponent(seg);
-                    }
-                    catch {
-                        return seg; // If decoding fails, use as-is
-                    }
-                });
-                const relativePath = segments.join(path.sep);
-                const fullPath = path.join(activeProjectDir, "media", relativePath);
-                console.log(`[media] Resolved path: ${fullPath}`);
-                // Security: ensure path is within media directory
-                const mediaDir = path.resolve(activeProjectDir, "media");
-                const resolvedPath = path.resolve(fullPath);
-                if (!resolvedPath.startsWith(mediaDir)) {
-                    console.error(`[media] Path escape attempt: ${resolvedPath} not in ${mediaDir}`);
-                    callback({ statusCode: 403 });
-                    return;
-                }
-                if (!fssync.existsSync(resolvedPath)) {
-                    console.error(`[media] File not found: ${resolvedPath}`);
-                    console.error(`[media] Active project dir: ${activeProjectDir}`);
-                    console.error(`[media] Media dir: ${mediaDir}`);
-                    console.error(`[media] Relative path: ${relativePath}`);
-                    callback({ statusCode: 404 });
-                    return;
-                }
-                // Determine MIME type
-                const ext = path.extname(resolvedPath).toLowerCase();
-                const mimeTypes = {
-                    ".jpg": "image/jpeg",
-                    ".jpeg": "image/jpeg",
-                    ".png": "image/png",
-                    ".gif": "image/gif",
-                    ".webp": "image/webp",
-                    ".mp4": "video/mp4",
-                    ".mov": "video/quicktime",
-                    ".avi": "video/x-msvideo",
-                    ".mkv": "video/x-matroska",
-                    ".webm": "video/webm"
-                };
-                const mimeType = mimeTypes[ext] || "application/octet-stream";
-                // Use streaming for proper range request support (needed for video seeking)
-                const fileStream = (0, fs_1.createReadStream)(resolvedPath);
-                const stats = fssync.statSync(resolvedPath);
-                console.log(`[media] ✓ Serving: ${resolvedPath} (${mimeType}, ${stats.size} bytes)`);
-                callback({
-                    statusCode: 200,
+            });
+            const relativePath = segments.join(path.sep);
+            const fullPath = path.join(activeProjectDir, "media", relativePath);
+            const mediaDir = path.resolve(activeProjectDir, "media");
+            const resolvedPath = path.resolve(fullPath);
+            if (!resolvedPath.startsWith(mediaDir)) {
+                console.error(`[media] Path escape attempt: ${resolvedPath} not in ${mediaDir}`);
+                return new Response("Forbidden", { status: 403 });
+            }
+            if (!fssync.existsSync(resolvedPath)) {
+                console.error(`[media] File not found: ${resolvedPath}`);
+                console.error(`[media] Active project dir: ${activeProjectDir}`);
+                console.error(`[media] Media dir: ${mediaDir}`);
+                console.error(`[media] Relative path: ${relativePath}`);
+                return new Response("Not found", { status: 404 });
+            }
+            const ext = path.extname(resolvedPath).toLowerCase();
+            const mimeTypes = {
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".gif": "image/gif",
+                ".webp": "image/webp",
+                ".heic": "image/heic",
+                ".heif": "image/heif",
+                ".mp4": "video/mp4",
+                ".mov": "video/quicktime",
+                ".m4v": "video/x-m4v",
+                ".avi": "video/x-msvideo",
+                ".mkv": "video/x-matroska",
+                ".webm": "video/webm"
+            };
+            const mimeType = mimeTypes[ext] || "application/octet-stream";
+            const stats = fssync.statSync(resolvedPath);
+            const range = parseBytesRange(request.headers.get("range") ?? undefined, stats.size);
+            if (range === "unsatisfiable") {
+                return new Response(null, {
+                    status: 416,
                     headers: {
                         "Content-Type": mimeType,
-                        "Content-Length": stats.size.toString(),
+                        "Content-Range": `bytes */${stats.size}`,
                         "Accept-Ranges": "bytes"
-                    },
-                    data: fileStream
+                    }
                 });
             }
-            catch (err) {
-                console.error("[media] Protocol error:", err);
-                if (err instanceof Error) {
-                    console.error("[media] Error stack:", err.stack);
+            const start = range?.start ?? 0;
+            const end = range?.end ?? Math.max(0, stats.size - 1);
+            const chunkSize = stats.size === 0 ? 0 : end - start + 1;
+            const statusCode = range ? 206 : 200;
+            const nodeStream = (0, fs_1.createReadStream)(resolvedPath, stats.size === 0 ? undefined : { start, end });
+            request.signal.addEventListener("abort", () => nodeStream.destroy());
+            console.log(`[media] ${statusCode} ${relativePath} ${mimeType} ${range ? `${start}-${end}/${stats.size}` : `${stats.size} bytes`}`);
+            return new Response(stream_1.Readable.toWeb(nodeStream), {
+                status: statusCode,
+                headers: {
+                    "Content-Type": mimeType,
+                    "Content-Length": String(chunkSize),
+                    "Accept-Ranges": "bytes",
+                    ...(range ? { "Content-Range": `bytes ${start}-${end}/${stats.size}` } : {})
                 }
-                callback({ statusCode: 500 });
+            });
+        }
+        catch (err) {
+            console.error("[media] Protocol error:", err);
+            if (err instanceof Error) {
+                console.error("[media] Error stack:", err.stack);
             }
-        })();
+            return new Response("Error", { status: 500 });
+        }
     });
     createWindow();
     electron_1.ipcMain.on("project:setActivePath", (_event, baseDir) => {
@@ -407,48 +572,23 @@ electron_1.app.whenReady().then(() => {
     electron_1.ipcMain.handle("media:copy", async (_event, baseDir, sourceAbsolutePath, targetFolderPath) => {
         const mediaDir = path.resolve(baseDir, "media");
         const targetDir = targetFolderPath ? path.join(mediaDir, targetFolderPath) : mediaDir;
-        await fs.mkdir(targetDir, { recursive: true });
-        const original = path.basename(sourceAbsolutePath);
-        const { name, ext } = path.parse(original);
-        // Check if it's an .avi file that needs conversion
-        const isAvi = ext.toLowerCase() === ".avi";
-        const finalExt = isAvi ? ".mp4" : ext;
-        const finalName = isAvi ? `${name}${finalExt}` : original;
-        let destPath = path.join(targetDir, finalName);
-        let i = 1;
-        while (fssync.existsSync(destPath)) {
-            const baseName = isAvi ? name : path.parse(original).name;
-            destPath = path.join(targetDir, `${baseName}_${i}${finalExt}`);
-            i += 1;
-        }
-        if (isAvi) {
-            // Convert .avi to .mp4
-            console.log(`[video] Converting .avi to .mp4: ${original} -> ${path.basename(destPath)}`);
-            try {
-                await convertVideoToMP4(sourceAbsolutePath, destPath);
-            }
-            catch (err) {
-                console.error(`[video] Conversion failed:`, err);
-                // If conversion fails, use original file with .avi extension
-                const fallbackPath = path.join(targetDir, original);
-                let fallbackDest = fallbackPath;
-                let j = 1;
-                while (fssync.existsSync(fallbackDest)) {
-                    fallbackDest = path.join(targetDir, `${name}_${j}${ext}`);
-                    j += 1;
-                }
-                console.log(`[video] Falling back to original file: ${fallbackDest}`);
-                await fs.copyFile(sourceAbsolutePath, fallbackDest);
-                destPath = fallbackDest;
-            }
-        }
-        else {
-            // Copy file as-is
-            await fs.copyFile(sourceAbsolutePath, destPath);
-        }
+        const destPath = await importMediaFile(sourceAbsolutePath, targetDir);
         const relativeToProject = path.relative(baseDir, destPath).split(path.sep).join("/");
         console.log(`[media:copy] Returning relative path: ${relativeToProject} (destPath: ${destPath})`);
         return relativeToProject;
+    });
+    electron_1.ipcMain.handle("media:hashExternalFiles", async (_event, absolutePaths) => {
+        const results = [];
+        for (const absolutePath of Array.isArray(absolutePaths) ? absolutePaths : []) {
+            try {
+                await assertReadableMediaFile(absolutePath);
+                results.push({ path: absolutePath, sha256: await sha256File(absolutePath) });
+            }
+            catch (error) {
+                console.warn("[media:hashExternalFiles] Failed to hash", absolutePath, error);
+            }
+        }
+        return results;
     });
     electron_1.ipcMain.handle("media:resolvePath", async (_event, baseDir, relativePath) => {
         const target = resolveInsideBase(baseDir, relativePath);
@@ -543,7 +683,7 @@ electron_1.app.whenReady().then(() => {
         if (!resolved.startsWith(mediaDir)) {
             throw new Error("Folder must be inside project media/");
         }
-        const allowed = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".mp4", ".mov"]);
+        const allowed = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".mp4", ".mov", ".m4v", ".avi"]);
         const out = [];
         const walk = async (dirAbs) => {
             const entries = await fs.readdir(dirAbs, { withFileTypes: true });
@@ -578,7 +718,7 @@ electron_1.app.whenReady().then(() => {
             throw new Error("Target must be inside project media/");
         }
         await fs.mkdir(targetAbs, { recursive: true });
-        const allowed = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".mp4", ".mov", ".avi"]);
+        const allowed = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"]);
         const copied = [];
         const walk = async (dirAbs) => {
             const entries = await fs.readdir(dirAbs, { withFileTypes: true });
@@ -591,18 +731,9 @@ electron_1.app.whenReady().then(() => {
                 const ext = path.extname(ent.name).toLowerCase();
                 if (!allowed.has(ext))
                     continue;
-                const destAbs = path.join(targetAbs, ent.name);
                 try {
-                    if (ext === ".avi") {
-                        const { name } = path.parse(ent.name);
-                        const mp4Dest = path.join(targetAbs, `${name}.mp4`);
-                        await convertVideoToMP4(fp, mp4Dest);
-                        copied.push(path.relative(baseDir, mp4Dest).split(path.sep).join("/"));
-                    }
-                    else {
-                        await fs.copyFile(fp, destAbs);
-                        copied.push(path.relative(baseDir, destAbs).split(path.sep).join("/"));
-                    }
+                    const destAbs = await importMediaFile(fp, targetAbs);
+                    copied.push(path.relative(baseDir, destAbs).split(path.sep).join("/"));
                 }
                 catch (err) {
                     console.warn("[media:importFolder] Failed to import", fp, err);
@@ -622,8 +753,8 @@ electron_1.app.whenReady().then(() => {
             const mediaDir = path.resolve(baseDir, "media");
             const sourceDir = path.resolve(sourceDirAbsolutePath);
             const targetDir = await ensureDirectoryInsideBase(mediaDir, targetFolderPath);
-            const imageExts = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic"]);
-            const videoExts = new Set([".mp4", ".mov", ".avi"]);
+            const imageExts = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"]);
+            const videoExts = new Set([".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"]);
             const known = new Set(Array.isArray(knownHashes) ? knownHashes.filter(Boolean) : []);
             const seenThisImport = new Set();
             const sourceFiles = [];
@@ -657,13 +788,21 @@ electron_1.app.whenReady().then(() => {
             });
             const imported = [];
             const failedFiles = [];
+            const duplicateMatches = [];
             let skippedDuplicates = 0;
             let processed = 0;
             for (const sourcePath of sourceFiles) {
                 try {
+                    await assertReadableMediaFile(sourcePath);
                     const hash = await sha256File(sourcePath);
+                    const sourceRelativePath = path.relative(sourceDir, sourcePath).split(path.sep).join("/");
                     if (known.has(hash) || seenThisImport.has(hash)) {
                         skippedDuplicates += 1;
+                        duplicateMatches.push({
+                            sha256: hash,
+                            sourceName: path.basename(sourcePath),
+                            sourceRelativePath
+                        });
                         processed += 1;
                         event.sender.send("media:importTrailCameraProgress", {
                             processed,
@@ -677,20 +816,15 @@ electron_1.app.whenReady().then(() => {
                     const stat = await fs.stat(sourcePath);
                     const parsed = path.parse(sourcePath);
                     const isAvi = parsed.ext.toLowerCase() === ".avi";
-                    const outputName = isAvi ? `${parsed.name}.mp4` : parsed.base;
-                    const destination = await availableDestination(targetDir, outputName);
                     event.sender.send("media:importTrailCameraProgress", {
                         processed,
                         total: sourceFiles.length,
                         fileName: parsed.base,
                         stage: isAvi ? "converting" : "copying"
                     });
-                    if (isAvi) {
-                        await convertVideoToMP4(sourcePath, destination);
-                    }
-                    else {
-                        await fs.copyFile(sourcePath, destination);
-                    }
+                    const destination = isAvi
+                        ? await convertAviOrCopy(sourcePath, targetDir, parsed.base)
+                        : await importMediaFile(sourcePath, targetDir);
                     const relativePath = path.relative(mediaDir, destination).split(path.sep).join("/");
                     imported.push({
                         name: path.basename(destination),
@@ -700,7 +834,7 @@ electron_1.app.whenReady().then(() => {
                         size: stat.size,
                         capturedAt: stat.mtime.toISOString(),
                         sourcePath,
-                        sourceRelativePath: path.relative(sourceDir, sourcePath).split(path.sep).join("/")
+                        sourceRelativePath
                     });
                 }
                 catch (error) {
@@ -719,7 +853,8 @@ electron_1.app.whenReady().then(() => {
                 files: imported,
                 skippedDuplicates,
                 skippedUnsupported,
-                failedFiles
+                failedFiles,
+                duplicateMatches
             };
         }
         finally {

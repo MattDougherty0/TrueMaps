@@ -5,8 +5,6 @@ import {
 	fileNeedsIdentity,
 	fileNeedsReview,
 	formatReviewNeeds,
-	reviewNeeds,
-	REVIEW_NEED_LABELS,
 	useMediaStore,
 	type KnownDeer,
 	type MediaClassification,
@@ -31,12 +29,7 @@ import {
 	type DuplicateWarning
 } from "../../lib/media/duplicates";
 import DuplicateWarningList from "./DuplicateWarningList";
-import {
-	burstSummary,
-	groupFilesByDate,
-	groupIntoBursts,
-	preferredBurstFileIndex
-} from "../../lib/media/timeline";
+import { groupFilesByDate } from "../../lib/media/timeline";
 
 type ManagerView = "cameras" | "deer" | "trash" | "review";
 type CameraBrowse =
@@ -53,8 +46,7 @@ type TrailCameraMediaManagerProps = {
 };
 
 type ReviewUndo = {
-	burstIndex: number;
-	burstFileIndex: number;
+	fileIndex: number;
 	sdDeleted: boolean;
 	files: Array<{
 		id: string;
@@ -293,12 +285,31 @@ const mergeCameraSites = (geoSites: CameraSite[], stored: StoredCameraSite[]): C
 function MediaPreview({ file, large = false }: { file: MediaFile; large?: boolean }) {
 	const url = toMediaUrl(file.path);
 	if (file.type === "video") {
+		if (!large) {
+			return (
+				<div
+					aria-label={file.name}
+					style={{
+						width: "100%",
+						height: "100%",
+						display: "grid",
+						placeItems: "center",
+						background: "#111",
+						color: "#fff",
+						fontSize: 22
+					}}
+				>
+					▶
+				</div>
+			);
+		}
 		return (
 			<video
+				key={file.id}
 				src={url}
-				controls={large}
-				muted={!large}
-				preload="metadata"
+				controls
+				preload="auto"
+				playsInline
 				style={{
 					width: "100%",
 					height: "100%",
@@ -506,9 +517,8 @@ export default function TrailCameraMediaManager({
 	} | null>(null);
 	const [message, setMessage] = useState("");
 	const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
-	const [reviewBursts, setReviewBursts] = useState<string[][]>([]);
+	const [reviewIds, setReviewIds] = useState<string[]>([]);
 	const [reviewIndex, setReviewIndex] = useState(0);
-	const [burstFileIndex, setBurstFileIndex] = useState(0);
 	const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
 	const [bulkSiteId, setBulkSiteId] = useState("");
 	const [areaName, setAreaName] = useState("");
@@ -519,8 +529,7 @@ export default function TrailCameraMediaManager({
 	const [sdDeleteStats, setSdDeleteStats] = useState({ deleted: 0, missing: 0, failed: 0 });
 	const [duplicateReport, setDuplicateReport] = useState<DuplicateWarning[]>([]);
 	const reviewIndexRef = useRef(0);
-	const reviewBurstsRef = useRef<string[][]>([]);
-	const burstFileIndexRef = useRef(0);
+	const reviewIdsRef = useRef<string[]>([]);
 	const selectedDeerIdRef = useRef("");
 	const undoStackRef = useRef<ReviewUndo[]>([]);
 
@@ -634,33 +643,21 @@ export default function TrailCameraMediaManager({
 		() => files.filter((file) => file.trashedAt).sort((a, b) => String(b.trashedAt).localeCompare(String(a.trashedAt))),
 		[files]
 	);
-	const reviewBurstIds = reviewBursts[reviewIndex] || [];
-	const currentBurstFiles = reviewBurstIds
-		.map((id) => files.find((file) => file.id === id))
-		.filter((file): file is MediaFile => Boolean(file));
-	const currentReviewFile = currentBurstFiles[burstFileIndex] || currentBurstFiles[0] || null;
-	const currentBurstDeerIds = Array.from(
-		new Set(currentBurstFiles.flatMap((file) => file.knownDeerIds || []))
-	);
+	const reviewFiles = reviewIds.map((id) => files.find((file) => file.id === id)).filter(Boolean) as MediaFile[];
+	const currentReviewFile = reviewFiles[reviewIndex] || null;
 	const currentFileDuplicates = useMemo(() => {
 		if (!currentReviewFile) return [];
 		return findDuplicatePeers(files, currentReviewFile).map((existing) =>
 			describeMediaDuplicate(existing, currentReviewFile.name, sites, propertyNames)
 		);
 	}, [currentReviewFile, files, sites, propertyNames]);
-	const burstNeedLabel = [...new Set(currentBurstFiles.flatMap(reviewNeeds))]
-		.map((need) => REVIEW_NEED_LABELS[need])
-		.join(" · ");
 
 	useEffect(() => {
 		reviewIndexRef.current = reviewIndex;
 	}, [reviewIndex]);
 	useEffect(() => {
-		reviewBurstsRef.current = reviewBursts;
-	}, [reviewBursts]);
-	useEffect(() => {
-		burstFileIndexRef.current = burstFileIndex;
-	}, [burstFileIndex]);
+		reviewIdsRef.current = reviewIds;
+	}, [reviewIds]);
 	useEffect(() => {
 		selectedDeerIdRef.current = selectedDeerId;
 	}, [selectedDeerId]);
@@ -731,30 +728,27 @@ export default function TrailCameraMediaManager({
 		}
 	};
 
-	const currentBurstIds = (): string[] =>
-		reviewBurstsRef.current[reviewIndexRef.current] || [];
-
-	const snapshotBurst = (): ReviewUndo => {
-		const ids = currentBurstIds();
-		const stateFiles = useMediaStore.getState().files;
+	const snapshotCurrent = (): ReviewUndo | null => {
+		const id = reviewIdsRef.current[reviewIndexRef.current];
+		if (!id) return null;
+		const file = useMediaStore.getState().files.find((item) => item.id === id);
+		if (!file) return null;
 		return {
-			burstIndex: reviewIndexRef.current,
-			burstFileIndex: burstFileIndexRef.current,
+			fileIndex: reviewIndexRef.current,
 			sdDeleted: false,
-			files: ids.map((id) => {
-				const file = stateFiles.find((item) => item.id === id);
-				return {
+			files: [
+				{
 					id,
-					classification: file?.classification,
-					reviewStatus: file?.reviewStatus,
-					knownDeerIds: file?.knownDeerIds,
-					cameraSiteId: file?.cameraSiteId,
-					propertyId: file?.propertyId,
-					areaName: file?.areaName,
-					trashedAt: file?.trashedAt,
-					sourceDeletedAt: file?.sourceDeletedAt
-				};
-			})
+					classification: file.classification,
+					reviewStatus: file.reviewStatus,
+					knownDeerIds: file.knownDeerIds,
+					cameraSiteId: file.cameraSiteId,
+					propertyId: file.propertyId,
+					areaName: file.areaName,
+					trashedAt: file.trashedAt,
+					sourceDeletedAt: file.sourceDeletedAt
+				}
+			]
 		};
 	};
 
@@ -762,43 +756,15 @@ export default function TrailCameraMediaManager({
 		undoStackRef.current = [...undoStackRef.current.slice(-19), entry];
 	};
 
-	const applyToBurst = (changesFor: (file: MediaFile) => Partial<MediaFile>) => {
-		const ids = currentBurstIds();
-		const stateFiles = useMediaStore.getState().files;
-		updateFiles(
-			ids.flatMap((id) => {
-				const file = stateFiles.find((item) => item.id === id);
-				return file ? [{ id, changes: changesFor(file) }] : [];
-			})
-		);
-	};
-
 	const startReview = (siteFiles: MediaFile[], startId?: string) => {
-		const bursts = groupIntoBursts(siteFiles).map((burst) => burst.files.map((file) => file.id));
-		let nextIndex = 0;
-		let nextFocus = 0;
-		if (startId) {
-			const found = bursts.findIndex((ids) => ids.includes(startId));
-			nextIndex = Math.max(0, found);
-			const burstFiles = (bursts[nextIndex] || [])
-				.map((id) => siteFiles.find((file) => file.id === id) || files.find((file) => file.id === id))
-				.filter((file): file is MediaFile => Boolean(file));
-			const clicked = burstFiles.findIndex((file) => file.id === startId);
-			nextFocus = clicked >= 0 ? clicked : preferredBurstFileIndex(burstFiles);
-		} else if (bursts[0]) {
-			const burstFiles = bursts[0]
-				.map((id) => siteFiles.find((file) => file.id === id))
-				.filter((file): file is MediaFile => Boolean(file));
-			nextFocus = preferredBurstFileIndex(burstFiles);
-		}
-		reviewBurstsRef.current = bursts;
+		const ids = siteFiles.map((file) => file.id);
+		const nextIndex = Math.max(0, startId ? ids.indexOf(startId) : 0);
+		reviewIdsRef.current = ids;
 		reviewIndexRef.current = nextIndex;
-		burstFileIndexRef.current = nextFocus;
 		undoStackRef.current = [];
 		setReviewReturnView(view === "deer" ? "deer" : "cameras");
-		setReviewBursts(bursts);
+		setReviewIds(ids);
 		setReviewIndex(nextIndex);
-		setBurstFileIndex(nextFocus);
 		setSdDeleteStats({ deleted: 0, missing: 0, failed: 0 });
 		setView("review");
 	};
@@ -810,10 +776,8 @@ export default function TrailCameraMediaManager({
 	const undoLastReviewAction = async () => {
 		const entry = undoStackRef.current.pop();
 		if (!entry || !projectPath) return;
-		reviewIndexRef.current = entry.burstIndex;
-		burstFileIndexRef.current = entry.burstFileIndex;
-		setReviewIndex(entry.burstIndex);
-		setBurstFileIndex(entry.burstFileIndex);
+		reviewIndexRef.current = entry.fileIndex;
+		setReviewIndex(entry.fileIndex);
 		updateFiles(
 			entry.files.map((file) => ({
 				id: file.id,
@@ -885,8 +849,9 @@ export default function TrailCameraMediaManager({
 
 	const assignCurrentCamera = async (cameraSiteId: string) => {
 		if (!projectPath || !currentReviewFile) return;
-		pushUndo(snapshotBurst());
-		applyToBurst(() => cameraAssignment(cameraSiteId));
+		const undo = snapshotCurrent();
+		if (undo) pushUndo(undo);
+		updateFile(currentReviewFile.id, cameraAssignment(cameraSiteId));
 		await persist();
 	};
 
@@ -906,15 +871,16 @@ export default function TrailCameraMediaManager({
 		const nextIds = currentIds.includes(deerId)
 			? currentIds.filter((id) => id !== deerId)
 			: [...currentIds, deerId];
-		pushUndo(snapshotBurst());
-		applyToBurst(() => ({
+		const undo = snapshotCurrent();
+		if (undo) pushUndo(undo);
+		updateFile(currentReviewFile.id, {
 			knownDeerIds: nextIds,
 			classification: nextIds.length
 				? "known_buck"
 				: currentReviewFile.classification === "known_buck"
 				? "unknown_buck"
 				: currentReviewFile.classification
-		}));
+		});
 		await persist();
 	};
 
@@ -922,11 +888,12 @@ export default function TrailCameraMediaManager({
 		if (!projectPath || !currentReviewFile) return;
 		const currentIds = currentReviewFile.knownDeerIds || [];
 		if (currentIds.includes(deerId)) return;
-		pushUndo(snapshotBurst());
-		applyToBurst((file) => ({
-			knownDeerIds: Array.from(new Set([...(file.knownDeerIds || []), deerId])),
+		const undo = snapshotCurrent();
+		if (undo) pushUndo(undo);
+		updateFile(currentReviewFile.id, {
+			knownDeerIds: Array.from(new Set([...currentIds, deerId])),
 			classification: "known_buck"
-		}));
+		});
 		await persist();
 	};
 
@@ -1161,81 +1128,54 @@ export default function TrailCameraMediaManager({
 	const classifyCurrent = async (classification: MediaClassification) => {
 		if (!projectPath) return;
 		const index = reviewIndexRef.current;
-		const burstIds = reviewBurstsRef.current[index] || [];
-		if (!burstIds.length) return;
-		const stateFiles = useMediaStore.getState().files;
-		const burstFiles = burstIds
-			.map((id) => stateFiles.find((item) => item.id === id))
-			.filter((file): file is MediaFile => Boolean(file));
-		const taggedDeerIds = Array.from(new Set(burstFiles.flatMap((file) => file.knownDeerIds || [])));
+		const fileId = reviewIdsRef.current[index];
+		if (!fileId) return;
+		const file = useMediaStore.getState().files.find((item) => item.id === fileId);
+		if (!file) return;
+		const taggedDeerIds = file.knownDeerIds || [];
 		if (classification === "known_buck" && !selectedDeerIdRef.current && !taggedDeerIds.length) {
 			setMessage("Choose or create a known deer first.");
 			return;
 		}
-		const undo = snapshotBurst();
-		const knownIds =
-			classification === "known_buck"
-				? Array.from(new Set([...taggedDeerIds, ...(selectedDeerIdRef.current ? [selectedDeerIdRef.current] : [])]))
-				: [];
-		let sdDeleted = false;
-		const perFile = new Map<string, Partial<MediaFile>>();
-		for (const file of burstFiles) {
-			const changes: Partial<MediaFile> = {
-				classification,
-				reviewStatus: "reviewed",
-				knownDeerIds: knownIds
-			};
-			if (classification === "blank") {
-				const sdStatus = await tryDeleteSourceOriginal(file);
-				if (sdStatus === "deleted") {
-					changes.sourceDeletedAt = new Date().toISOString();
-					sdDeleted = true;
-					setSdDeleteStats((current) => ({ ...current, deleted: current.deleted + 1 }));
-				} else if (sdStatus === "missing") {
-					setSdDeleteStats((current) => ({ ...current, missing: current.missing + 1 }));
-				} else if (sdStatus === "failed") {
-					setSdDeleteStats((current) => ({ ...current, failed: current.failed + 1 }));
-				}
+		const undo = snapshotCurrent();
+		const changes: Partial<MediaFile> = {
+			classification,
+			reviewStatus: "reviewed",
+			knownDeerIds:
+				classification === "known_buck"
+					? Array.from(new Set([...taggedDeerIds, ...(selectedDeerIdRef.current ? [selectedDeerIdRef.current] : [])]))
+					: []
+		};
+		if (classification === "blank") {
+			const sdStatus = await tryDeleteSourceOriginal(file);
+			if (sdStatus === "deleted") {
+				changes.sourceDeletedAt = new Date().toISOString();
+				if (undo) undo.sdDeleted = true;
+				setSdDeleteStats((current) => ({ ...current, deleted: current.deleted + 1 }));
+			} else if (sdStatus === "missing") {
+				setSdDeleteStats((current) => ({ ...current, missing: current.missing + 1 }));
+			} else if (sdStatus === "failed") {
+				setSdDeleteStats((current) => ({ ...current, failed: current.failed + 1 }));
 			}
-			perFile.set(file.id, changes);
 		}
-		undo.sdDeleted = sdDeleted;
-		pushUndo(undo);
-		updateFiles(burstFiles.map((file) => ({ id: file.id, changes: perFile.get(file.id) || {} })));
-		const next = index + 1;
-		reviewIndexRef.current = next;
-		const nextBurst = reviewBurstsRef.current[next] || [];
-		const nextFiles = nextBurst
-			.map((id) => useMediaStore.getState().files.find((item) => item.id === id))
-			.filter((file): file is MediaFile => Boolean(file));
-		const nextFocus = preferredBurstFileIndex(nextFiles);
-		burstFileIndexRef.current = nextFocus;
-		setReviewIndex(next);
-		setBurstFileIndex(nextFocus);
+		if (undo) pushUndo(undo);
+		updateFile(file.id, changes);
+		reviewIndexRef.current = index + 1;
+		setReviewIndex(index + 1);
 		await persist();
 		setMessage("");
 	};
 
 	const stepReview = (delta: number) => {
-		const next = Math.min(
-			reviewBurstsRef.current.length,
-			Math.max(0, reviewIndexRef.current + delta)
-		);
+		const next = Math.min(reviewIdsRef.current.length, Math.max(0, reviewIndexRef.current + delta));
 		reviewIndexRef.current = next;
-		const nextBurst = reviewBurstsRef.current[next] || [];
-		const nextFiles = nextBurst
-			.map((id) => useMediaStore.getState().files.find((item) => item.id === id))
-			.filter((file): file is MediaFile => Boolean(file));
-		const nextFocus = preferredBurstFileIndex(nextFiles);
-		burstFileIndexRef.current = nextFocus;
 		setReviewIndex(next);
-		setBurstFileIndex(nextFocus);
 	};
 
 	const finishReview = async () => {
 		if (!projectPath) return;
 		const stateFiles = useMediaStore.getState().files;
-		const reviewedIds = new Set(reviewBursts.flat());
+		const reviewedIds = new Set(reviewIds);
 		const blankFiles = stateFiles.filter(
 			(file) => reviewedIds.has(file.id) && file.classification === "blank" && !file.trashedAt
 		);
@@ -1262,9 +1202,8 @@ export default function TrailCameraMediaManager({
 		}
 		setMessage(`Review complete. ${sdParts.join(" ")}`);
 		setView(reviewReturnView);
-		setReviewBursts([]);
+		setReviewIds([]);
 		setReviewIndex(0);
-		setBurstFileIndex(0);
 		undoStackRef.current = [];
 	};
 
@@ -1284,7 +1223,7 @@ export default function TrailCameraMediaManager({
 				void undoLastReviewAction();
 				return;
 			}
-			if (reviewIndexRef.current >= reviewBurstsRef.current.length) {
+			if (reviewIndexRef.current >= reviewIdsRef.current.length) {
 				if (key === "Enter") {
 					event.preventDefault();
 					void finishReview();
@@ -1476,42 +1415,19 @@ export default function TrailCameraMediaManager({
 		if (!days.length) return null;
 		return (
 			<div style={{ display: "grid", gap: spacing.xxl }}>
-				{days.map((day) => {
-					const bursts = groupIntoBursts(day.files);
-					return (
-						<section key={day.key} id={`media-day-${day.key}`} style={{ display: "grid", gap: spacing.lg }}>
-							<div>
-								<div style={{ fontSize: typography.fontSize.md, fontWeight: typography.fontWeight.semibold }}>
-									{day.label}
-								</div>
-								<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
-									{day.files.length} file{day.files.length === 1 ? "" : "s"} · {bursts.length} event
-									{bursts.length === 1 ? "" : "s"}
-								</div>
+				{days.map((day) => (
+					<section key={day.key} id={`media-day-${day.key}`} style={{ display: "grid", gap: spacing.lg }}>
+						<div>
+							<div style={{ fontSize: typography.fontSize.md, fontWeight: typography.fontWeight.semibold }}>
+								{day.label}
 							</div>
-							{bursts.map((burst) => (
-								<div
-									key={burst.id}
-									style={{
-										display: "grid",
-										gap: spacing.sm,
-										padding: burst.files.length > 1 ? spacing.md : 0,
-										border: burst.files.length > 1 ? `1px solid ${colors.borderMedium}` : "none",
-										borderRadius: borderRadius.lg,
-										background: burst.files.length > 1 ? colors.bgSecondary : "transparent"
-									}}
-								>
-									{burst.files.length > 1 ? (
-										<div style={{ fontSize: typography.fontSize.xs, color: colors.textSecondary, fontWeight: typography.fontWeight.medium }}>
-											{formatCaptureDateTime(burst.files[0].capturedAt || burst.files[0].createdAt)} · {burstSummary(burst.files)}
-										</div>
-									) : null}
-									{renderGrid(burst.files, gridFiles)}
-								</div>
-							))}
-						</section>
-					);
-				})}
+							<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted, marginTop: 2 }}>
+								{day.files.length} file{day.files.length === 1 ? "" : "s"}
+							</div>
+						</div>
+						{renderGrid(day.files, gridFiles)}
+					</section>
+				))}
 			</div>
 		);
 	};
@@ -2060,46 +1976,10 @@ export default function TrailCameraMediaManager({
 					{view === "review" ? (
 						<div style={{ height: "100%", display: "grid", gridTemplateColumns: "minmax(0, 1.6fr) minmax(300px, 0.7fr)", gap: spacing.xxl }}>
 							<section style={{ position: "relative", minHeight: 420, background: "#111", borderRadius: borderRadius.lg, overflow: "hidden" }}>
-								{currentReviewFile ? <MediaPreview file={currentReviewFile} large /> : (
+								{currentReviewFile ? <MediaPreview key={currentReviewFile.id} file={currentReviewFile} large /> : (
 									<div style={{ height: "100%", display: "grid", placeItems: "center", color: "#fff" }}>Review complete</div>
 								)}
 								<ReviewHotkeyLegend finished={!currentReviewFile} onPhoto />
-								{currentBurstFiles.length > 1 ? (
-									<div
-										style={{
-											position: "absolute",
-											left: 0,
-											right: 0,
-											bottom: 0,
-											display: "flex",
-											gap: spacing.sm,
-											padding: spacing.md,
-											background: "linear-gradient(transparent, rgba(0,0,0,0.82))",
-											overflowX: "auto"
-										}}
-									>
-										{currentBurstFiles.map((file, index) => (
-											<button
-												key={file.id}
-												type="button"
-												onClick={() => setBurstFileIndex(index)}
-												style={{
-													width: 88,
-													height: 64,
-													padding: 0,
-													borderRadius: borderRadius.md,
-													overflow: "hidden",
-													border: index === burstFileIndex ? "2px solid #fff" : "2px solid transparent",
-													cursor: "pointer",
-													background: "#000",
-													flex: "0 0 auto"
-												}}
-											>
-												<MediaPreview file={file} />
-											</button>
-										))}
-									</div>
-								) : null}
 							</section>
 							<aside style={{ display: "flex", flexDirection: "column", gap: spacing.lg }}>
 								<div>
@@ -2112,32 +1992,27 @@ export default function TrailCameraMediaManager({
 											Previous<span style={shortcutHintStyle}>←</span>
 										</button>
 										<div style={{ fontSize: typography.fontSize.xs, color: colors.textMuted }}>
-											{Math.min(reviewIndex + 1, reviewBursts.length)} of {reviewBursts.length} events
+											{Math.min(reviewIndex + 1, reviewFiles.length)} of {reviewFiles.length}
 										</div>
 										<button
 											onClick={() => stepReview(1)}
-											disabled={reviewIndex >= reviewBursts.length}
-											style={{ ...buttonStyle, opacity: reviewIndex >= reviewBursts.length ? 0.45 : 1 }}
+											disabled={reviewIndex >= reviewFiles.length}
+											style={{ ...buttonStyle, opacity: reviewIndex >= reviewFiles.length ? 0.45 : 1 }}
 										>
 											Next<span style={shortcutHintStyle}>→</span>
 										</button>
 									</div>
 									<div style={{ fontWeight: typography.fontWeight.semibold, marginTop: spacing.xs }}>
-										{currentReviewFile
-											? currentBurstFiles.length > 1
-												? burstSummary(currentBurstFiles)
-												: currentReviewFile.name
-											: "All events reviewed"}
+										{currentReviewFile?.name || "All files reviewed"}
 									</div>
 									{currentReviewFile ? (
 										<div style={{ fontSize: typography.fontSize.sm, color: colors.textMuted }}>
-											{formatCaptureDateTime(currentBurstFiles[0]?.capturedAt || currentReviewFile.capturedAt || currentReviewFile.createdAt)}
-											{currentBurstFiles.length > 1 ? ` · ${currentReviewFile.name}` : ""}
+											{formatCaptureDateTime(currentReviewFile.capturedAt || currentReviewFile.createdAt)}
 										</div>
 									) : null}
-									{currentReviewFile && burstNeedLabel ? (
+									{currentReviewFile && formatReviewNeeds(currentReviewFile) ? (
 										<div style={{ marginTop: spacing.sm, fontSize: typography.fontSize.sm, color: colors.primary, fontWeight: typography.fontWeight.semibold }}>
-											Still needs {burstNeedLabel}
+											Still needs {formatReviewNeeds(currentReviewFile)}
 										</div>
 									) : null}
 								</div>
@@ -2173,11 +2048,11 @@ export default function TrailCameraMediaManager({
 													</option>
 												))}
 											</select>
-											<div style={{ marginTop: spacing.sm, fontSize: typography.fontSize.sm, fontWeight: typography.fontWeight.semibold }}>Known deer in this event</div>
+											<div style={{ marginTop: spacing.sm, fontSize: typography.fontSize.sm, fontWeight: typography.fontWeight.semibold }}>Known deer in this file</div>
 											{knownDeer.length ? (
 												<div style={{ display: "flex", flexWrap: "wrap", gap: spacing.sm }}>
 													{knownDeer.map((deer) => {
-														const checked = currentBurstDeerIds.includes(deer.id);
+														const checked = currentReviewFile.knownDeerIds?.includes(deer.id) || false;
 														return (
 															<label
 																key={deer.id}
@@ -2217,10 +2092,10 @@ export default function TrailCameraMediaManager({
 											</div>
 											<button
 												onClick={() => void classifyCurrent("known_buck")}
-												disabled={!currentBurstDeerIds.length}
+												disabled={!(currentReviewFile.knownDeerIds || []).length}
 												style={{
 													...primaryButtonStyle,
-													opacity: currentBurstDeerIds.length ? 1 : 0.55
+													opacity: (currentReviewFile.knownDeerIds || []).length ? 1 : 0.55
 												}}
 											>
 												Keep known buck & next<span style={shortcutHintStyle}>5</span>
@@ -2243,11 +2118,11 @@ export default function TrailCameraMediaManager({
 												Blank / misfire<span style={shortcutHintStyle}>1</span>
 											</button>
 											<div style={{ gridColumn: "1 / -1", fontSize: typography.fontSize.xs, color: colors.textMuted }}>
-												{currentBurstFiles.some((file) => file.sourceDeletedAt)
-													? "SD card original already deleted for this event."
-													: currentBurstFiles.some((file) => file.sourcePath || file.sourceRelativePath)
-													? "Blank / misfire also deletes the original(s) on the SD card if the card is still connected."
-													: "No SD card original is recorded for this event."}
+												{currentReviewFile.sourceDeletedAt
+													? "SD card original already deleted for this file."
+													: currentReviewFile.sourcePath || currentReviewFile.sourceRelativePath
+													? "Blank / misfire also deletes the original on the SD card if the card is still connected."
+													: "No SD card original is recorded for this file."}
 											</div>
 										</div>
 										<ReviewHotkeyLegend finished={false} />

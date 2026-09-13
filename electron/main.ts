@@ -5,6 +5,7 @@ import * as path from "path";
 import * as fs from "fs/promises";
 import * as fssync from "fs";
 import { createReadStream } from "fs";
+import { Readable } from "stream";
 import { createHash } from "crypto";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const PDFDocument = require("pdfkit");
@@ -77,7 +78,17 @@ function ensureFfmpegConfigured(): string | null {
 // CRITICAL: Register custom protocol schemes BEFORE app is ready (must be synchronous)
 protocol.registerSchemesAsPrivileged([
 	{ scheme: "mbtiles", privileges: { standard: true, secure: true } },
-	{ scheme: "media", privileges: { standard: true, secure: true } }
+	{
+		scheme: "media",
+		privileges: {
+			standard: true,
+			secure: true,
+			supportFetchAPI: true,
+			stream: true,
+			corsEnabled: true,
+			bypassCSP: true
+		}
+	}
 ]);
 
 const isDev = !app.isPackaged;
@@ -130,6 +141,27 @@ function resolveInsideBase(baseDir: string, relativePath: string): string {
 function isPathInside(parent: string, child: string): boolean {
 	const rel = path.relative(parent, child);
 	return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+function parseBytesRange(header: string | undefined, size: number): { start: number; end: number } | "unsatisfiable" | null {
+	if (!header || size <= 0) return null;
+	const match = /^bytes=(\d*)-(\d*)$/i.exec(header.trim());
+	if (!match) return null;
+	let start: number;
+	let end: number;
+	if (match[1] === "" && match[2] !== "") {
+		const suffix = Number(match[2]);
+		if (!Number.isFinite(suffix) || suffix <= 0) return "unsatisfiable";
+		start = Math.max(0, size - suffix);
+		end = size - 1;
+	} else {
+		start = match[1] === "" ? 0 : Number(match[1]);
+		end = match[2] === "" ? size - 1 : Number(match[2]);
+		if (!Number.isFinite(start) || !Number.isFinite(end)) return "unsatisfiable";
+		end = Math.min(end, size - 1);
+	}
+	if (start < 0 || start >= size || end < start) return "unsatisfiable";
+	return { start, end };
 }
 
 async function resolvedPathInside(parent: string, candidate: string): Promise<string | null> {
@@ -345,111 +377,103 @@ app.whenReady().then(() => {
 	});
 
 	console.log("[media] Registering media protocol handler...");
-	protocol.registerStreamProtocol("media", (request, callback) => {
-		console.log("[media] Handler called! URL:", request.url);
-		(async () => {
-			try {
-				if (!activeProjectDir) {
-					console.error("[media] No active project directory");
-					callback({ statusCode: 404 });
-					return;
+	protocol.handle("media", async (request) => {
+		try {
+			if (!activeProjectDir) {
+				console.error("[media] No active project directory");
+				return new Response("Not found", { status: 404 });
+			}
+			const url = new URL(request.url);
+			let pathParts: string[] = [];
+			if (url.hostname) {
+				pathParts = [url.hostname, ...url.pathname.split("/").filter(Boolean)];
+			} else if (url.pathname && url.pathname !== "/") {
+				pathParts = url.pathname.split("/").filter(Boolean);
+			} else {
+				console.error(`[media] No path found in URL: ${request.url}`);
+				return new Response("Bad request", { status: 400 });
+			}
+
+			const segments = pathParts.map((seg) => {
+				try {
+					return decodeURIComponent(seg);
+				} catch {
+					return seg;
 				}
-				const url = new URL(request.url);
-				console.log(`[media] Request URL: ${request.url}`);
-				console.log(`[media] Parsed - hostname: "${url.hostname}", pathname: "${url.pathname}"`);
-				
-				// For media:// URLs, path can be in pathname (media:///path) or hostname+pathname (media://hostname/path)
-				let pathParts: string[] = [];
-				
-				// If hostname exists, it's the first path segment (media://leacock/path)
-				if (url.hostname) {
-					// Path starts with hostname: media://leacock/Older%208/IMAG0156.jpg
-					pathParts = [url.hostname, ...url.pathname.split("/").filter(Boolean)];
-					console.log(`[media] Using hostname+pathname, parts:`, pathParts);
-				} else if (url.pathname && url.pathname !== "/") {
-					// Path is only in pathname: media:///Leacock/Albino/IMAG0007.jpg
-					pathParts = url.pathname.split("/").filter(Boolean);
-					console.log(`[media] Using pathname only, parts:`, pathParts);
-				} else {
-					console.error(`[media] No path found in URL`);
-					callback({ statusCode: 400 });
-					return;
-				}
-				
-				// Decode each path segment separately (handles URL encoding like %2F, %20)
-				const segments = pathParts.map(seg => {
-					try {
-						return decodeURIComponent(seg);
-					} catch {
-						return seg; // If decoding fails, use as-is
-					}
-				});
-				
-				const relativePath = segments.join(path.sep);
-				const fullPath = path.join(activeProjectDir, "media", relativePath);
-				
-				console.log(`[media] Resolved path: ${fullPath}`);
-				
-				// Security: ensure path is within media directory
-				const mediaDir = path.resolve(activeProjectDir, "media");
-				const resolvedPath = path.resolve(fullPath);
-				
-				if (!resolvedPath.startsWith(mediaDir)) {
-					console.error(`[media] Path escape attempt: ${resolvedPath} not in ${mediaDir}`);
-					callback({ statusCode: 403 });
-					return;
-				}
-				
-				if (!fssync.existsSync(resolvedPath)) {
-					console.error(`[media] File not found: ${resolvedPath}`);
-					console.error(`[media] Active project dir: ${activeProjectDir}`);
-					console.error(`[media] Media dir: ${mediaDir}`);
-					console.error(`[media] Relative path: ${relativePath}`);
-					callback({ statusCode: 404 });
-					return;
-				}
-				
-				// Determine MIME type
-				const ext = path.extname(resolvedPath).toLowerCase();
-				const mimeTypes: Record<string, string> = {
-					".jpg": "image/jpeg",
-					".jpeg": "image/jpeg",
-					".png": "image/png",
-					".gif": "image/gif",
-					".webp": "image/webp",
-					".heic": "image/heic",
-					".heif": "image/heif",
-					".mp4": "video/mp4",
-					".mov": "video/quicktime",
-					".m4v": "video/x-m4v",
-					".avi": "video/x-msvideo",
-					".mkv": "video/x-matroska",
-					".webm": "video/webm"
-				};
-				const mimeType = mimeTypes[ext] || "application/octet-stream";
-				
-				// Use streaming for proper range request support (needed for video seeking)
-				const fileStream = createReadStream(resolvedPath);
-				const stats = fssync.statSync(resolvedPath);
-				
-				console.log(`[media] ✓ Serving: ${resolvedPath} (${mimeType}, ${stats.size} bytes)`);
-				callback({
-					statusCode: 200,
+			});
+
+			const relativePath = segments.join(path.sep);
+			const fullPath = path.join(activeProjectDir, "media", relativePath);
+			const mediaDir = path.resolve(activeProjectDir, "media");
+			const resolvedPath = path.resolve(fullPath);
+
+			if (!resolvedPath.startsWith(mediaDir)) {
+				console.error(`[media] Path escape attempt: ${resolvedPath} not in ${mediaDir}`);
+				return new Response("Forbidden", { status: 403 });
+			}
+
+			if (!fssync.existsSync(resolvedPath)) {
+				console.error(`[media] File not found: ${resolvedPath}`);
+				console.error(`[media] Active project dir: ${activeProjectDir}`);
+				console.error(`[media] Media dir: ${mediaDir}`);
+				console.error(`[media] Relative path: ${relativePath}`);
+				return new Response("Not found", { status: 404 });
+			}
+
+			const ext = path.extname(resolvedPath).toLowerCase();
+			const mimeTypes: Record<string, string> = {
+				".jpg": "image/jpeg",
+				".jpeg": "image/jpeg",
+				".png": "image/png",
+				".gif": "image/gif",
+				".webp": "image/webp",
+				".heic": "image/heic",
+				".heif": "image/heif",
+				".mp4": "video/mp4",
+				".mov": "video/quicktime",
+				".m4v": "video/x-m4v",
+				".avi": "video/x-msvideo",
+				".mkv": "video/x-matroska",
+				".webm": "video/webm"
+			};
+			const mimeType = mimeTypes[ext] || "application/octet-stream";
+			const stats = fssync.statSync(resolvedPath);
+			const range = parseBytesRange(request.headers.get("range") ?? undefined, stats.size);
+
+			if (range === "unsatisfiable") {
+				return new Response(null, {
+					status: 416,
 					headers: {
 						"Content-Type": mimeType,
-						"Content-Length": stats.size.toString(),
+						"Content-Range": `bytes */${stats.size}`,
 						"Accept-Ranges": "bytes"
-					},
-					data: fileStream
+					}
 				});
-			} catch (err) {
-				console.error("[media] Protocol error:", err);
-				if (err instanceof Error) {
-					console.error("[media] Error stack:", err.stack);
-				}
-				callback({ statusCode: 500 });
 			}
-		})();
+
+			const start = range?.start ?? 0;
+			const end = range?.end ?? Math.max(0, stats.size - 1);
+			const chunkSize = stats.size === 0 ? 0 : end - start + 1;
+			const statusCode = range ? 206 : 200;
+			const nodeStream = createReadStream(resolvedPath, stats.size === 0 ? undefined : { start, end });
+			request.signal.addEventListener("abort", () => nodeStream.destroy());
+			console.log(`[media] ${statusCode} ${relativePath} ${mimeType} ${range ? `${start}-${end}/${stats.size}` : `${stats.size} bytes`}`);
+			return new Response(Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>, {
+				status: statusCode,
+				headers: {
+					"Content-Type": mimeType,
+					"Content-Length": String(chunkSize),
+					"Accept-Ranges": "bytes",
+					...(range ? { "Content-Range": `bytes ${start}-${end}/${stats.size}` } : {})
+				}
+			});
+		} catch (err) {
+			console.error("[media] Protocol error:", err);
+			if (err instanceof Error) {
+				console.error("[media] Error stack:", err.stack);
+			}
+			return new Response("Error", { status: 500 });
+		}
 	});
 
 	createWindow();
